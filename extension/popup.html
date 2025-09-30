@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 300px;
+      padding: 20px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      margin: 0;
+    }
+    h2 {
+      margin: 0 0 15px 0;
+      font-size: 18px;
+      color: #333;
+    }
+    .status {
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      font-size: 13px;
+    }
+    .status.connected {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .status.disconnected {
+      background: #ffebee;
+      color: #c62828;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #1976D2;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .vendor-info {
+      font-size: 12px;
+      color: #666;
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #eee;
+    }
+  </style>
+</head>
+<body>
+  <h2>Price Scraper</h2>
+  
+  <div id="status" class="status disconnected">
+    Server: Checking...
+  </div>
+  
+  <button id="scrapeBtn" disabled>Scrape This Page</button>
+  <button id="testBtn">Test Connection</button>
+  
+  <div class="vendor-info">
+    <strong>Supported Vendors:</strong><br>
+    • Grainger<br>
+    • McMaster-Carr<br>
+    • Festo<br>
+    • Zoro
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

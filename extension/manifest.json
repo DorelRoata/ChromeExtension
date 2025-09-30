@@ -1,0 +1,41 @@
+{
+  "name": "Multi-Vendor Price Scraper",
+  "version": "2.0",
+  "manifest_version": 3,
+  "description": "Scrapes pricing data from Grainger, McMaster-Carr, Festo, and Zoro",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://www.grainger.com/*",
+    "https://www.mcmaster.com/*",
+    "https://www.festo.com/*",
+    "https://www.zoro.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.grainger.com/product/*",
+        "https://www.mcmaster.com/*",
+        "https://www.festo.com/us/en/a/*",
+        "https://www.zoro.com/i/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
