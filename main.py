@@ -67,12 +67,34 @@ def create_flask_app():
 def start_flask_server():
     """Start Flask server in background thread"""
     global FLASK_APP
+
+    # Check if port is already in use
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    result = sock.connect_ex(('localhost', SERVER_PORT))
+    sock.close()
+
+    if result == 0:
+        logger.warning(f"Port {SERVER_PORT} is already in use. Another instance may be running.")
+        from tkinter import messagebox
+        response = messagebox.askyesno(
+            "Port Already in Use",
+            f"Port {SERVER_PORT} is already in use.\n\n"
+            "This usually means another instance is running.\n\n"
+            "Continue anyway? (May cause errors)"
+        )
+        if not response:
+            sys.exit(0)
+
     FLASK_APP = create_flask_app()
-    
+
     def run_server():
         logger.info(f"Starting Flask server on port {SERVER_PORT}...")
-        FLASK_APP.run(host='localhost', port=SERVER_PORT, debug=False, use_reloader=False)
-    
+        try:
+            FLASK_APP.run(host='localhost', port=SERVER_PORT, debug=False, use_reloader=False, threaded=True)
+        except OSError as e:
+            logger.error(f"Failed to start server: {e}")
+
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
     time.sleep(1)  # Wait for server to start
@@ -384,15 +406,64 @@ def save_to_excel(file_path, row_index, data):
 #
 def get_search_string():
     """Prompt user for ACI number"""
-    try:
-        root = tk.Tk()
-        root.withdraw()
-        root.focus_force()
-        search_string = simpledialog.askstring("Input", "Enter ACI Number:")
-        return search_string
-    finally:
-        if root and root.winfo_exists():
-            root.destroy()
+    root = tk.Tk()
+    root.title("Advantage Conveyor")
+
+    # Set window size
+    window_width = 320
+    window_height = 160
+
+    # Get screen dimensions
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+    # Calculate center position
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
+
+    # Set geometry with centered position
+    root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
+
+    # Status label
+    status_label = tk.Label(root, text="Server Status: Running ✓", font=("Arial", 9), fg="green")
+    status_label.pack(pady=(12, 8))
+
+    # Instruction label
+    instruction_label = tk.Label(root, text="Enter ACI Number:", font=("Arial", 10))
+    instruction_label.pack(pady=(8, 5))
+
+    # Entry field
+    entry = tk.Entry(root, font=("Arial", 10), width=25)
+    entry.pack(pady=8)
+    entry.focus_set()
+
+    result = {'value': None}
+
+    def on_submit():
+        result['value'] = entry.get()
+        root.destroy()
+
+    def on_cancel():
+        result['value'] = None
+        root.destroy()
+
+    # Bind Enter key to submit
+    entry.bind('<Return>', lambda e: on_submit())
+
+    # Buttons
+    button_frame = tk.Frame(root)
+    button_frame.pack(pady=12)
+
+    cancel_btn = tk.Button(button_frame, text="Cancel", command=on_cancel, font=("Arial", 10), bg="#f44336", fg="white", width=10)
+    cancel_btn.pack(side=tk.LEFT, padx=5)
+
+    submit_btn = tk.Button(button_frame, text="Submit", command=on_submit, font=("Arial", 10), bg="#4CAF50", fg="white", width=10)
+    submit_btn.pack(side=tk.LEFT, padx=5)
+
+    root.protocol("WM_DELETE_WINDOW", on_cancel)
+    root.mainloop()
+
+    return result['value']
 
 def compare_and_highlight(widget, current_value, new_value):
     """Highlight widget if values differ"""
@@ -437,30 +508,30 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
 
     root.protocol("WM_DELETE_WINDOW", on_closing)
 
-    large_font = tkFont.Font(family="Arial", size=12)
+    large_font = tkFont.Font(family="Arial", size=10)
 
     # Headers
     tk.Label(root, text="Entry Data", font=large_font).grid(row=0, column=1, padx=5, pady=5)
     tk.Label(root, text="Current Data", font=large_font).grid(row=0, column=2, padx=2, pady=5)
-    tk.Label(root, text="KEEP", font=large_font).grid(row=0, column=3, padx=(5, 10), pady=2, sticky="w")
+    tk.Label(root, text="KEEP", font=large_font).grid(row=0, column=3, padx=(2, 10), pady=2, sticky="w")
 
     text_boxes = []
     current_text_boxes = []
     checkboxes = []
 
     for i, field in enumerate(fields):
-        tk.Label(root, text=field, font=large_font).grid(row=i + 1, column=0, padx=5, pady=5)
+        tk.Label(root, text=field, font=large_font).grid(row=i + 1, column=0, padx=5, pady=5, sticky="e")
 
         is_not_found = (entry_data[i] == "Not Found")
 
         if field == "Description":
             # Multi-line text for description
-            text_box = tk.Text(root, font=large_font, height=4, width=40, wrap="word")
+            text_box = tk.Text(root, font=large_font, height=7, width=40, wrap="word")
             text_box.grid(row=i + 1, column=1, padx=5, pady=5)
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
             text_box.insert(tk.END, entry_text)
 
-            current_text_box = tk.Text(root, font=large_font, height=4, width=30, wrap="word", state="normal", takefocus=0)
+            current_text_box = tk.Text(root, font=large_font, height=7, width=30, wrap="word", state="normal", takefocus=0)
             current_text_box.grid(row=i + 1, column=2, padx=50, pady=5)
             current_text = "" if current_data[i] is None else str(current_data[i])
             current_text_box.insert(tk.END, current_text)
@@ -495,7 +566,7 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
         checkbox.config(command=lambda idx=i: switch_checkbox_state(
             idx, checkboxes, text_boxes, current_text_boxes, fields, entry_data, current_data
         ))
-        checkbox.grid(row=i + 1, column=3, padx=(5, 10), pady=2, sticky="w")
+        checkbox.grid(row=i + 1, column=3, padx=(2, 10), pady=2, sticky="w")
         checkboxes.append(checkbox)
 
     def submit():
@@ -599,9 +670,9 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
         command=toggle_all_checkboxes,
         font=large_font,
         takefocus=0,
-        width=12
+        width=10
     )
-    check_all_button.grid(row=len(fields) + 1, column=3, padx=(5, 10), pady=10, sticky="w")
+    check_all_button.grid(row=len(fields) + 1, column=2, padx=10, pady=10, sticky="e")
 
     cancel_button = tk.Button(root, text="Cancel", command=cancel, font=large_font, bg="#f44336", fg="white", takefocus=0)
     cancel_button.grid(row=len(fields) + 1, column=1, padx=20, pady=10)
@@ -613,6 +684,17 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
     root.transient()
     root.grab_set()
     root.focus_set()
+
+    # Center the window after all widgets are added
+    root.update_idletasks()
+    window_width = root.winfo_width()
+    window_height = root.winfo_height()
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
+    root.geometry(f"+{center_x}+{center_y}")
+
     root.mainloop()
 
 #
@@ -708,7 +790,7 @@ def main():
         # Determine file path
         server_file_path = r'Z:\ACOD\MMLV2.xlsm'
         local_file_path = 'MML.xlsm'
-        
+
         if os.path.exists(server_file_path):
             file_path = server_file_path
             logger.info(f"Using server file: {file_path}")
@@ -716,21 +798,13 @@ def main():
             file_path = local_file_path
             logger.info(f"Using local file: {file_path}")
             messagebox.showwarning("Warning", "Server file not found. Using local file.")
-        
+
         # Start Flask server
         start_flask_server()
-        
-        # Show startup message
-        messagebox.showinfo(
-            "Price Scraper Ready",
-            "Flask server is running.\n\n"
-            "Make sure the Chrome extension is installed.\n\n"
-            "The browser will open automatically when you search for items."
-        )
-        
+
         # Start main loop
         main_loop(file_path)
-    
+
     except KeyboardInterrupt:
         logger.info("Program terminated by user")
         sys.exit(0)
@@ -738,6 +812,9 @@ def main():
         logger.error(f"Fatal error: {e}", exc_info=True)
         messagebox.showerror("Fatal Error", str(e))
         sys.exit(1)
+    finally:
+        logger.info("Cleaning up and exiting...")
+        # Daemon threads will automatically terminate when main thread exits
 
 if __name__ == "__main__":
     main()

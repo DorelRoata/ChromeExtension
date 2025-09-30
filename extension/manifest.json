@@ -16,7 +16,7 @@
         "https://www.grainger.com/product/*",
         "https://www.mcmaster.com/*",
         "https://www.festo.com/us/en/a/*",
-        "https://www.zoro.com/i/*"
+        "https://www.zoro.com/*/i/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
