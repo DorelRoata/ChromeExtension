@@ -404,68 +404,67 @@ def compare_and_highlight(widget, current_value, new_value):
 def switch_checkbox_state(index, checkboxes, text_boxes, current_text_boxes, fields, entry_data, current_data):
     """Toggle checkbox and update display"""
     checkbox = checkboxes[index]
+    # Get the state AFTER the checkbox has been toggled (it's already changed by the time this is called)
     state = checkbox.var.get()
-    checkbox.var.set(not state)
-    
-    if state:  # Now checked - use current data
+
+    if state:  # Checked - use current data
         if fields[index] == "Description":
             text_boxes[index].delete("1.0", tk.END)
-            text_boxes[index].insert(tk.END, current_data[index])
+            text_boxes[index].insert(tk.END, current_data[index] if current_data[index] is not None else "")
             text_boxes[index].config(bg="white")
         else:
             text_boxes[index].delete(0, tk.END)
-            text_boxes[index].insert(0, current_data[index])
+            text_boxes[index].insert(0, str(current_data[index]) if current_data[index] is not None else "")
             text_boxes[index].config(bg="white")
-            text_boxes[index].config(bg="white")
-    else:  # Now unchecked - use entry data
+    else:  # Unchecked - use entry data
         if fields[index] == "Description":
             text_boxes[index].delete("1.0", tk.END)
-            text_boxes[index].insert(tk.END, entry_data[index])
+            text_boxes[index].insert(tk.END, entry_data[index] if entry_data[index] is not None else "")
             compare_and_highlight(text_boxes[index], current_data[index], entry_data[index])
         else:
             text_boxes[index].delete(0, tk.END)
-            text_boxes[index].insert(0, str(entry_data[index]))
+            text_boxes[index].insert(0, str(entry_data[index]) if entry_data[index] is not None else "")
             compare_and_highlight(text_boxes[index], current_data[index], entry_data[index])
 
 def user_form(current_data, entry_data, fields, file_path, row_index):
     """Display GUI form for user confirmation"""
     root = tk.Tk()
     root.title("Update Data - ACI# " + str(current_data[0]))
-    
+
     def on_closing():
         root.quit()
         root.destroy()
-    
+
     root.protocol("WM_DELETE_WINDOW", on_closing)
-    
+
     large_font = tkFont.Font(family="Arial", size=12)
-    
+
     # Headers
     tk.Label(root, text="Entry Data", font=large_font).grid(row=0, column=1, padx=5, pady=5)
     tk.Label(root, text="Current Data", font=large_font).grid(row=0, column=2, padx=2, pady=5)
-    tk.Label(root, text="KEEP", font=large_font).grid(row=0, column=3, padx=3, pady=2)
-    
+    tk.Label(root, text="KEEP", font=large_font).grid(row=0, column=3, padx=(5, 10), pady=2, sticky="w")
+
     text_boxes = []
     current_text_boxes = []
     checkboxes = []
-    
+
     for i, field in enumerate(fields):
         tk.Label(root, text=field, font=large_font).grid(row=i + 1, column=0, padx=5, pady=5)
-        
+
         is_not_found = (entry_data[i] == "Not Found")
-        
+
         if field == "Description":
             # Multi-line text for description
             text_box = tk.Text(root, font=large_font, height=4, width=40, wrap="word")
             text_box.grid(row=i + 1, column=1, padx=5, pady=5)
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
             text_box.insert(tk.END, entry_text)
-            
-            current_text_box = tk.Text(root, font=large_font, height=4, width=30, wrap="word", state="normal")
+
+            current_text_box = tk.Text(root, font=large_font, height=4, width=30, wrap="word", state="normal", takefocus=0)
             current_text_box.grid(row=i + 1, column=2, padx=50, pady=5)
             current_text = "" if current_data[i] is None else str(current_data[i])
             current_text_box.insert(tk.END, current_text)
-            
+
             if entry_text.strip() != current_text.strip():
                 text_box.config(bg="yellow")
         else:
@@ -474,31 +473,31 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
             text_box.grid(row=i + 1, column=1, padx=5, pady=5)
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
             text_box.insert(0, entry_text)
-            
-            current_text_box = tk.Entry(root, font=large_font, state='normal', width=30)
+
+            current_text_box = tk.Entry(root, font=large_font, state='normal', width=30, takefocus=0)
             current_text_box.grid(row=i + 1, column=2, padx=50, pady=5)
             current_text = "" if current_data[i] is None else str(current_data[i])
             current_text_box.insert(0, current_text)
             current_text_box.config(state="readonly")
-        
+
         if is_not_found:
             text_box.config(bg="red")
-        
+
         compare_and_highlight(text_box, entry_data[i], current_data[i])
-        
+
         text_boxes.append(text_box)
         current_text_boxes.append(current_text_box)
-        
+
         # Checkbox
         var = tk.BooleanVar()
-        checkbox = tk.Checkbutton(root, text="", variable=var, onvalue=True, offvalue=False)
+        checkbox = tk.Checkbutton(root, text="", variable=var, onvalue=True, offvalue=False, takefocus=0)
         checkbox.var = var
         checkbox.config(command=lambda idx=i: switch_checkbox_state(
             idx, checkboxes, text_boxes, current_text_boxes, fields, entry_data, current_data
         ))
-        checkbox.grid(row=i + 1, column=3, padx=1, pady=2)
+        checkbox.grid(row=i + 1, column=3, padx=(5, 10), pady=2, sticky="w")
         checkboxes.append(checkbox)
-    
+
     def submit():
         try:
             # Update entry_data based on checkboxes
@@ -557,12 +556,57 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
     def cancel():
         root.quit()
         root.destroy()
-    
-    # Buttons
-    cancel_button = tk.Button(root, text="Cancel", command=cancel, font=large_font, bg="#f44336", fg="white")
+
+    # Check All button and action buttons on same row
+    check_all_state = {'checked': False}
+
+    def toggle_all_checkboxes():
+        check_all_state['checked'] = not check_all_state['checked']
+        for checkbox in checkboxes:
+            checkbox.var.set(check_all_state['checked'])
+            # Trigger the visual update by updating the display
+            idx = checkboxes.index(checkbox)
+            if check_all_state['checked']:
+                # Use current data
+                if fields[idx] == "Description":
+                    text_boxes[idx].delete("1.0", tk.END)
+                    text_boxes[idx].insert(tk.END, current_data[idx] if current_data[idx] is not None else "")
+                    text_boxes[idx].config(bg="white")
+                else:
+                    text_boxes[idx].delete(0, tk.END)
+                    text_boxes[idx].insert(0, str(current_data[idx]) if current_data[idx] is not None else "")
+                    text_boxes[idx].config(bg="white")
+            else:
+                # Use entry data
+                if fields[idx] == "Description":
+                    text_boxes[idx].delete("1.0", tk.END)
+                    text_boxes[idx].insert(tk.END, entry_data[idx] if entry_data[idx] is not None else "")
+                    compare_and_highlight(text_boxes[idx], current_data[idx], entry_data[idx])
+                else:
+                    text_boxes[idx].delete(0, tk.END)
+                    text_boxes[idx].insert(0, str(entry_data[idx]) if entry_data[idx] is not None else "")
+                    compare_and_highlight(text_boxes[idx], current_data[idx], entry_data[idx])
+
+        # Update button text
+        if check_all_state['checked']:
+            check_all_button.config(text="Uncheck All")
+        else:
+            check_all_button.config(text="Check All")
+
+    check_all_button = tk.Button(
+        root,
+        text="Check All",
+        command=toggle_all_checkboxes,
+        font=large_font,
+        takefocus=0,
+        width=12
+    )
+    check_all_button.grid(row=len(fields) + 1, column=3, padx=(5, 10), pady=10, sticky="w")
+
+    cancel_button = tk.Button(root, text="Cancel", command=cancel, font=large_font, bg="#f44336", fg="white", takefocus=0)
     cancel_button.grid(row=len(fields) + 1, column=1, padx=20, pady=10)
-    
-    submit_button = tk.Button(root, text="Submit", command=submit, font=large_font, bg="#4CAF50", fg="white")
+
+    submit_button = tk.Button(root, text="Submit", command=submit, font=large_font, bg="#4CAF50", fg="white", takefocus=0)
     submit_button.grid(row=len(fields) + 1, column=2, padx=10, pady=10)
     
     root.protocol("WM_DELETE_WINDOW", cancel)
