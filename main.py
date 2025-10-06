@@ -105,6 +105,59 @@ def start_flask_server():
 #
 class BrowserController:
     @staticmethod
+    def find_chrome_path():
+        """Dynamically find Chrome installation path"""
+        if sys.platform == 'win32':
+            import winreg
+
+            # Try registry first (most reliable)
+            registry_paths = [
+                (winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe'),
+                (winreg.HKEY_LOCAL_MACHINE, r'Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe'),
+                (winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\Clients\StartMenuInternet\Google Chrome\shell\open\command'),
+            ]
+
+            for hkey, reg_path in registry_paths:
+                try:
+                    key = winreg.OpenKey(hkey, reg_path)
+                    chrome_path, _ = winreg.QueryValueEx(key, '')
+                    winreg.CloseKey(key)
+                    # Clean up path (remove quotes and arguments)
+                    chrome_path = chrome_path.strip('"').split(' --')[0].split('.exe')[0] + '.exe'
+                    if os.path.exists(chrome_path):
+                        logger.info(f"Found Chrome via registry: {chrome_path}")
+                        return chrome_path
+                except (FileNotFoundError, OSError):
+                    continue
+
+            # Fallback to common installation paths
+            common_paths = [
+                r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+                r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+                os.path.expandvars(r'%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe'),
+                os.path.expandvars(r'%PROGRAMFILES%\Google\Chrome\Application\chrome.exe'),
+                os.path.expandvars(r'%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe'),
+            ]
+
+            for path in common_paths:
+                if os.path.exists(path):
+                    logger.info(f"Found Chrome at: {path}")
+                    return path
+
+        elif sys.platform == 'darwin':
+            mac_path = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+            if os.path.exists(mac_path):
+                return mac_path
+        else:  # Linux
+            linux_paths = ['/usr/bin/google-chrome', '/usr/bin/chromium-browser', '/usr/bin/chromium']
+            for path in linux_paths:
+                if os.path.exists(path):
+                    return path
+
+        logger.warning("Chrome not found in any known location")
+        return None
+
+    @staticmethod
     def open_vendor_page(vendor_name, part_number):
         """Open vendor page in Chrome"""
         vendor_key = vendor_name.lower().strip()
@@ -117,22 +170,14 @@ class BrowserController:
         logger.info(f"Opening {url} in Chrome...")
 
         try:
-            # Force Chrome browser
-            chrome_path = None
-            if sys.platform == 'win32':
-                chrome_path = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
-                if not os.path.exists(chrome_path):
-                    chrome_path = r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe'
-            elif sys.platform == 'darwin':
-                chrome_path = 'open -a /Applications/Google\ Chrome.app'
-            else:  # Linux
-                chrome_path = '/usr/bin/google-chrome'
+            # Find Chrome dynamically
+            chrome_path = BrowserController.find_chrome_path()
 
-            if chrome_path and os.path.exists(chrome_path):
+            if chrome_path:
                 webbrowser.register('chrome', None, webbrowser.BackgroundBrowser(chrome_path))
                 webbrowser.get('chrome').open(url)
             else:
-                logger.warning("Chrome not found at default location, using default browser")
+                logger.warning("Chrome not found, using default browser")
                 webbrowser.open(url)
             return True
         except Exception as e:

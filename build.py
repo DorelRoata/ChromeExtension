@@ -16,12 +16,16 @@ def build_exe():
         '--name=PriceScraper',
         '--onefile',
         '--windowed',
-        '--icon=icon.ico',  # Add your icon file
-        '--add-data=server.py;.',  # Include Flask server
+        '--icon=icon.png',
         '--hidden-import=flask',
         '--hidden-import=flask_cors',
         '--hidden-import=openpyxl',
         '--hidden-import=tkinter',
+        '--hidden-import=tkinter.font',
+        '--hidden-import=socket',
+        '--hidden-import=webbrowser',
+        '--hidden-import=threading',
+        '--hidden-import=queue',
         '--collect-all=flask',
         '--collect-all=flask_cors',
         '--noconfirm'
