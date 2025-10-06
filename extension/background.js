@@ -1,6 +1,6 @@
 // Keep service worker alive
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Multi-Vendor Price Scraper installed');
+  console.log('Advantage Multi-Vendor Price Scraper installed');
 });
 
 // Badge management

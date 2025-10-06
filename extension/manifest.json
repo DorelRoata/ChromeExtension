@@ -1,5 +1,5 @@
 {
-  "name": "Multi-Vendor Price Scraper",
+  "name": "Advantage Multi-Vendor Scraper",
   "version": "2.0",
   "manifest_version": 3,
   "description": "Scrapes pricing data from Grainger, McMaster-Carr, Festo, and Zoro",
