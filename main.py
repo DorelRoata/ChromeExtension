@@ -454,6 +454,25 @@ def get_search_string():
     root = tk.Tk()
     root.title("Advantage Conveyor")
 
+    # Set window icon
+    try:
+        if getattr(sys, 'frozen', False):
+            # Running as compiled exe - try ICO first for better Windows support
+            icon_ico = os.path.join(sys._MEIPASS, 'icon.ico')
+            icon_png = os.path.join(sys._MEIPASS, 'icon.png')
+        else:
+            # Running as script
+            icon_ico = 'icon.ico'
+            icon_png = 'icon.png'
+
+        # Try ICO first (native Windows format), fallback to PNG
+        if os.path.exists(icon_ico):
+            root.iconbitmap(icon_ico)
+        elif os.path.exists(icon_png):
+            root.iconphoto(True, tk.PhotoImage(file=icon_png))
+    except Exception as e:
+        logger.warning(f"Could not set window icon: {e}")
+
     # Set window size
     window_width = 320
     window_height = 160
@@ -468,6 +487,11 @@ def get_search_string():
 
     # Set geometry with centered position
     root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
+
+    # Bring window to front and focus it
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after_idle(root.attributes, '-topmost', False)
 
     # Status label
     status_label = tk.Label(root, text="Server Status: Running ✓", font=("Arial", 9), fg="green")
@@ -546,6 +570,25 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
     """Display GUI form for user confirmation"""
     root = tk.Tk()
     root.title("Update Data - ACI# " + str(current_data[0]))
+
+    # Set window icon
+    try:
+        if getattr(sys, 'frozen', False):
+            # Running as compiled exe - try ICO first for better Windows support
+            icon_ico = os.path.join(sys._MEIPASS, 'icon.ico')
+            icon_png = os.path.join(sys._MEIPASS, 'icon.png')
+        else:
+            # Running as script
+            icon_ico = 'icon.ico'
+            icon_png = 'icon.png'
+
+        # Try ICO first (native Windows format), fallback to PNG
+        if os.path.exists(icon_ico):
+            root.iconbitmap(icon_ico)
+        elif os.path.exists(icon_png):
+            root.iconphoto(True, tk.PhotoImage(file=icon_png))
+    except Exception as e:
+        logger.warning(f"Could not set window icon: {e}")
 
     def on_closing():
         root.quit()
@@ -832,17 +875,44 @@ def main_loop(file_path):
 def main():
     """Application entry point"""
     try:
-        # Determine file path
-        server_file_path = r'Z:\ACOD\MMLV2.xlsm'
-        local_file_path = 'MML.xlsm'
+        # Determine file path - check multiple extensions
+        server_file_paths = [
+            r'Z:\ACOD\MMLV2.xlsm',
+            r'Z:\ACOD\MMLV2.xlsx',
+            r'Z:\ACOD\MML.xlsm',
+            r'Z:\ACOD\MML.xlsx'
+        ]
+        local_file_paths = ['MML.xlsm', 'MML.xlsx', 'MMLV2.xlsm', 'MMLV2.xlsx']
 
-        if os.path.exists(server_file_path):
-            file_path = server_file_path
-            logger.info(f"Using server file: {file_path}")
-        else:
-            file_path = local_file_path
-            logger.info(f"Using local file: {file_path}")
-            messagebox.showwarning("Warning", "Server file not found. Using local file.")
+        file_path = None
+
+        # Check server paths first
+        for path in server_file_paths:
+            if os.path.exists(path):
+                file_path = path
+                logger.info(f"Using server file: {file_path}")
+                break
+
+        # If no server file found, check local paths
+        if not file_path:
+            for path in local_file_paths:
+                if os.path.exists(path):
+                    file_path = path
+                    logger.info(f"Using local file: {file_path}")
+                    messagebox.showwarning("Warning", "Server file not found. Using local file.")
+                    break
+
+        # If still no file found, show error and exit
+        if not file_path:
+            error_msg = (
+                "Excel file not found!\n\n"
+                "Please ensure one of the following exists:\n"
+                "- Z:\\ACOD\\MMLV2.xlsm (or .xlsx)\n"
+                "- MML.xlsm (or .xlsx) in the program directory"
+            )
+            messagebox.showerror("Error", error_msg)
+            logger.error("No Excel file found")
+            sys.exit(1)
 
         # Start Flask server
         start_flask_server()
