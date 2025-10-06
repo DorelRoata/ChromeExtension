@@ -83,6 +83,25 @@
 
   // GRAINGER SCRAPER
   function extractGraingerData() {
+    // Find price with dollar sign
+    let price = "Not Found";
+    const priceElements = document.querySelectorAll('.HANkB');
+    for (const elem of priceElements) {
+      if (elem.textContent.includes('$')) {
+        price = elem.textContent.trim();
+        break;
+      }
+    }
+
+    // Find MFR number - look for item number without "Item" prefix
+    let mfrNumber = "Not Found";
+    const itemLabel = Array.from(document.querySelectorAll('dt')).find(
+      dt => dt.textContent.trim().toLowerCase().includes('item')
+    );
+    if (itemLabel && itemLabel.nextElementSibling) {
+      mfrNumber = itemLabel.nextElementSibling.textContent.trim();
+    }
+
     return {
       partNumber: extractPartNumber(),
       description: findText([
@@ -90,24 +109,19 @@
         'h1[class*="product"]',
         'h1'
       ]),
-      price: findText([
-        '.FuAZI6 .HANkB',
-        '[class*="price"]'
-      ]),
+      price: price,
       unit: findText([
+        '.G32gdF',
         '.FuAZI6 .G32gdF',
         '[class*="unit"]'
       ]),
-      mfrNumber: findText([
-        '.ue2KE .vDgTDH',
-        '[class*="mfr"]'
-      ]),
+      mfrNumber: mfrNumber,
       brand: (() => {
         const brandLabel = Array.from(document.querySelectorAll('dt')).find(
           dt => dt.textContent.trim() === 'Brand'
         );
-        return brandLabel && brandLabel.nextElementSibling 
-          ? brandLabel.nextElementSibling.textContent.trim() 
+        return brandLabel && brandLabel.nextElementSibling
+          ? brandLabel.nextElementSibling.textContent.trim()
           : "Not Found";
       })(),
       url: window.location.href,
