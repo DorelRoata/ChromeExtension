@@ -25,6 +25,9 @@
     const vendor = detectVendor();
     if (!vendor) return;
 
+    // Register this tab immediately (before scraping)
+    registerTab();
+
     // Wait a bit for dynamic content
     setTimeout(() => {
       if (!extractionAttempted) {
@@ -32,6 +35,32 @@
         extractAndSend(vendor);
       }
     }, 2000);
+  }
+
+  async function registerTab() {
+    try {
+      // Get our tab ID
+      const tabId = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'getTabId' }, resolve);
+      });
+
+      if (tabId) {
+        // Send a registration message to server
+        await fetch(`${SERVER_URL}/register-tab`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tabId: tabId, url: window.location.href })
+        });
+
+        console.log('Tab registered with server');
+
+        // Start polling for close signal immediately
+        startPollingForClose(tabId);
+      }
+    } catch (error) {
+      // Server may not be running, fail silently
+      console.log('Could not register tab with server');
+    }
   }
 
   function extractAndSend(vendor) {
@@ -248,6 +277,14 @@
 
   async function sendToServer(data) {
     try {
+      // Get our tab ID from background script
+      const tabId = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'getTabId' }, resolve);
+      });
+
+      // Include tab ID in data
+      data.tabId = tabId;
+
       const response = await fetch(`${SERVER_URL}/scrape`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -257,11 +294,70 @@
       if (response.ok) {
         console.log('Data sent successfully');
         showNotification('✓ Price data captured');
+        // Note: Polling already started in registerTab(), no need to start again
       }
     } catch (error) {
       console.error('Server error:', error);
       // Fail silently if server not running
     }
+  }
+
+  function startPollingForClose(tabId) {
+    let pollCount = 0;
+    const maxPolls = 600; // Stop after 10 minutes (600 * 1 second)
+    let pollInterval = null;
+
+    const cleanup = () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+
+    const handleBeforeUnload = () => {
+      cleanup();
+      notifyServerTabClosed(tabId);
+    };
+
+    pollInterval = setInterval(async () => {
+      pollCount++;
+
+      // Stop polling after max attempts
+      if (pollCount >= maxPolls) {
+        cleanup();
+        console.log('Stopped polling for tab close');
+        notifyServerTabClosed(tabId);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${SERVER_URL}/should-close/${tabId}`);
+
+        if (response.ok) {
+          const data = await response.json();
+
+          if (data.shouldClose) {
+            cleanup();
+            console.log('Closing tab as requested by server');
+
+            // Close this tab
+            chrome.runtime.sendMessage({ action: 'closeSelf' });
+          }
+        }
+      } catch (error) {
+        // Server may be down, continue polling
+      }
+    }, 1000); // Poll every 1 second
+
+    // Cleanup when page unloads (user manually closes tab or navigates away)
+    window.addEventListener('beforeunload', handleBeforeUnload);
+  }
+
+  function notifyServerTabClosed(tabId) {
+    // Use sendBeacon for reliable delivery even during page unload
+    const data = JSON.stringify({ tabId: tabId });
+    navigator.sendBeacon(`${SERVER_URL}/tab-closed`, data);
   }
 
   function showNotification(message) {
@@ -281,26 +377,79 @@
       box-shadow: 0 2px 5px rgba(0,0,0,0.2);
       animation: slideIn 0.3s ease-out;
     `;
-    
-    const style = document.createElement('style');
-    style.textContent = `
-      @keyframes slideIn {
-        from { transform: translateX(400px); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-      }
-    `;
-    document.head.appendChild(style);
-    
+
+    // Only add style once to prevent accumulation
+    if (!document.getElementById('vendor-scraper-notification-style')) {
+      const style = document.createElement('style');
+      style.id = 'vendor-scraper-notification-style';
+      style.textContent = `
+        @keyframes slideIn {
+          from { transform: translateX(400px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     document.body.appendChild(notification);
     setTimeout(() => notification.remove(), 3000);
   }
 
   // Listen for manual trigger from popup
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  const messageListener = (request, sender, sendResponse) => {
     if (request.action === 'scrapeNow') {
       const vendor = detectVendor();
       extractAndSend(vendor);
       sendResponse({ success: true });
     }
+  };
+  chrome.runtime.onMessage.addListener(messageListener);
+
+  // Listen for Ctrl+Shift+X to trigger manual timeout
+  const keydownHandler = async (e) => {
+    if (e.ctrlKey && e.shiftKey && (e.key === 'X' || e.key === 'x')) {
+      e.preventDefault();
+      console.log('Manual timeout triggered by user');
+
+      const vendor = detectVendor();
+      if (!vendor) return;
+
+      // Send a timeout notification to server with whatever data we have
+      const tabId = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'getTabId' }, resolve);
+      });
+
+      if (tabId) {
+        try {
+          await fetch(`${SERVER_URL}/scrape`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tabId: tabId,
+              vendor: vendor,
+              partNumber: extractPartNumber(),
+              description: 'Not Found',
+              price: 'Not Found',
+              unit: 'Not Found',
+              mfrNumber: 'Not Found',
+              brand: 'Not Found',
+              url: window.location.href,
+              timestamp: new Date().toISOString(),
+              manualTimeout: true
+            })
+          });
+          showNotification('⏭ Manual timeout - proceeding with form');
+        } catch (error) {
+          console.error('Failed to send manual timeout:', error);
+        }
+      }
+    }
+  };
+  document.addEventListener('keydown', keydownHandler);
+
+  // Cleanup listeners on page unload
+  window.addEventListener('beforeunload', () => {
+    chrome.runtime.onMessage.removeListener(messageListener);
+    document.removeEventListener('keydown', keydownHandler);
   });
 })();

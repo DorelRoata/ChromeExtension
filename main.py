@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 
 # Global configuration
 SERVER_PORT = 5000
-DATA_QUEUE = queue.Queue()
+DATA_QUEUE = queue.Queue(maxsize=50)  # Limit queue size to prevent unbounded growth
 FLASK_APP = None
+TABS_TO_CLOSE = set()  # Track tabs that should be closed
+REGISTERED_TABS = {}  # Track all open tabs {tabId: {'url': url, 'timestamp': time.time()}}
 
 # Schema fields
 FIELDS = [
@@ -43,6 +45,16 @@ VENDOR_URLS = {
 #
 # FLASK SERVER
 #
+def cleanup_stale_tabs(max_age_seconds=1800):
+    """Remove tabs that haven't been cleaned up properly (older than 30 minutes)"""
+    current_time = time.time()
+    stale_tabs = [tab_id for tab_id, info in REGISTERED_TABS.items()
+                  if current_time - info['timestamp'] > max_age_seconds]
+    for tab_id in stale_tabs:
+        REGISTERED_TABS.pop(tab_id, None)
+        TABS_TO_CLOSE.discard(tab_id)
+        logger.info(f"Cleaned up stale tab {tab_id}")
+
 def create_flask_app():
     app = Flask(__name__)
     CORS(app)
@@ -50,18 +62,70 @@ def create_flask_app():
     @app.route('/ping', methods=['GET'])
     def ping():
         return jsonify({"status": "ok", "timestamp": time.time()})
-    
+
     @app.route('/scrape', methods=['POST'])
     def receive_scrape():
         try:
             data = request.json
-            logger.info(f"Received data from extension: {data.get('vendor')} - {data.get('partNumber')}")
-            DATA_QUEUE.put(data)
+            logger.info(f"Received data from extension: {data.get('vendor')} - {data.get('partNumber')} (Tab ID: {data.get('tabId')})")
+            try:
+                DATA_QUEUE.put(data, block=False)
+            except queue.Full:
+                logger.warning("Queue full, discarding oldest item")
+                try:
+                    DATA_QUEUE.get_nowait()  # Remove oldest
+                except queue.Empty:
+                    pass
+                DATA_QUEUE.put(data, block=False)  # Add new
             return jsonify({"status": "success"}), 200
         except Exception as e:
             logger.error(f"Error receiving data: {e}")
             return jsonify({"status": "error", "message": str(e)}), 500
-    
+
+    @app.route('/register-tab', methods=['POST'])
+    def register_tab():
+        """Register a tab when it opens"""
+        try:
+            data = request.json
+            tab_id = data.get('tabId')
+            url = data.get('url', 'unknown')
+            if tab_id:
+                REGISTERED_TABS[tab_id] = {'url': url, 'timestamp': time.time()}
+                logger.info(f"Tab {tab_id} registered: {url}")
+
+                # Clean up stale tabs older than 30 minutes
+                cleanup_stale_tabs()
+            return jsonify({"status": "success"}), 200
+        except Exception as e:
+            logger.error(f"Error registering tab: {e}")
+            return jsonify({"status": "error"}), 500
+
+    @app.route('/should-close/<int:tab_id>', methods=['GET'])
+    def should_close_tab(tab_id):
+        """Check if a tab should be closed"""
+        should_close = tab_id in TABS_TO_CLOSE
+        if should_close:
+            TABS_TO_CLOSE.discard(tab_id)  # Remove after checking
+            REGISTERED_TABS.pop(tab_id, None)  # Clean up registration
+            logger.info(f"Signaling tab {tab_id} to close")
+        return jsonify({"shouldClose": should_close})
+
+    @app.route('/tab-closed', methods=['POST'])
+    def tab_closed():
+        """Clean up when a tab is manually closed or times out"""
+        try:
+            data = request.get_json(silent=True)
+            if data:
+                tab_id = data.get('tabId')
+                if tab_id:
+                    TABS_TO_CLOSE.discard(tab_id)  # Remove from close queue
+                    REGISTERED_TABS.pop(tab_id, None)  # Remove from registered tabs
+                    logger.info(f"Tab {tab_id} closed/cleaned up")
+            return '', 204  # No content response
+        except Exception as e:
+            logger.error(f"Error handling tab closure: {e}")
+            return '', 204  # Still return success to avoid client errors
+
     return app
 
 def start_flask_server():
@@ -120,13 +184,15 @@ class BrowserController:
             for hkey, reg_path in registry_paths:
                 try:
                     key = winreg.OpenKey(hkey, reg_path)
-                    chrome_path, _ = winreg.QueryValueEx(key, '')
-                    winreg.CloseKey(key)
-                    # Clean up path (remove quotes and arguments)
-                    chrome_path = chrome_path.strip('"').split(' --')[0].split('.exe')[0] + '.exe'
-                    if os.path.exists(chrome_path):
-                        logger.info(f"Found Chrome via registry: {chrome_path}")
-                        return chrome_path
+                    try:
+                        chrome_path, _ = winreg.QueryValueEx(key, '')
+                        # Clean up path (remove quotes and arguments)
+                        chrome_path = chrome_path.strip('"').split(' --')[0].split('.exe')[0] + '.exe'
+                        if os.path.exists(chrome_path):
+                            logger.info(f"Found Chrome via registry: {chrome_path}")
+                            return chrome_path
+                    finally:
+                        winreg.CloseKey(key)
                 except (FileNotFoundError, OSError):
                     continue
 
@@ -449,8 +515,12 @@ def save_to_excel(file_path, row_index, data):
 #
 # GUI COMPONENTS
 #
+# Global variable to cache PhotoImage to prevent memory leaks
+_APP_ICON_PHOTO = None
+
 def get_search_string():
     """Prompt user for ACI number"""
+    global _APP_ICON_PHOTO
     root = tk.Tk()
     root.title("Advantage Conveyor")
 
@@ -469,7 +539,9 @@ def get_search_string():
         if os.path.exists(icon_ico):
             root.iconbitmap(icon_ico)
         elif os.path.exists(icon_png):
-            root.iconphoto(True, tk.PhotoImage(file=icon_png))
+            if _APP_ICON_PHOTO is None:
+                _APP_ICON_PHOTO = tk.PhotoImage(file=icon_png)
+            root.iconphoto(True, _APP_ICON_PHOTO)
     except Exception as e:
         logger.warning(f"Could not set window icon: {e}")
 
@@ -504,7 +576,6 @@ def get_search_string():
     # Entry field
     entry = tk.Entry(root, font=("Arial", 10), width=25)
     entry.pack(pady=8)
-    entry.focus_set()
 
     result = {'value': None}
 
@@ -516,8 +587,9 @@ def get_search_string():
         result['value'] = None
         root.destroy()
 
-    # Bind Enter key to submit
+    # Bind Enter key to submit and Escape key to cancel
     entry.bind('<Return>', lambda e: on_submit())
+    entry.bind('<Escape>', lambda e: on_cancel())
 
     # Buttons
     button_frame = tk.Frame(root)
@@ -530,6 +602,14 @@ def get_search_string():
     submit_btn.pack(side=tk.LEFT, padx=5)
 
     root.protocol("WM_DELETE_WINDOW", on_cancel)
+
+    # Ensure window is centered and focused
+    root.update_idletasks()
+    root.deiconify()
+    root.focus_force()
+    entry.focus_set()
+    entry.icursor(tk.END)
+
     root.mainloop()
 
     return result['value']
@@ -566,8 +646,9 @@ def switch_checkbox_state(index, checkboxes, text_boxes, current_text_boxes, fie
             text_boxes[index].insert(0, str(entry_data[index]) if entry_data[index] is not None else "")
             compare_and_highlight(text_boxes[index], current_data[index], entry_data[index])
 
-def user_form(current_data, entry_data, fields, file_path, row_index):
+def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=None):
     """Display GUI form for user confirmation"""
+    global _APP_ICON_PHOTO
     root = tk.Tk()
     root.title("Update Data - ACI# " + str(current_data[0]))
 
@@ -586,7 +667,9 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
         if os.path.exists(icon_ico):
             root.iconbitmap(icon_ico)
         elif os.path.exists(icon_png):
-            root.iconphoto(True, tk.PhotoImage(file=icon_png))
+            if _APP_ICON_PHOTO is None:
+                _APP_ICON_PHOTO = tk.PhotoImage(file=icon_png)
+            root.iconphoto(True, _APP_ICON_PHOTO)
     except Exception as e:
         logger.warning(f"Could not set window icon: {e}")
 
@@ -674,45 +757,53 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
                         entry_data[i] = text_boxes[i].get("1.0", tk.END).strip()
                     else:
                         entry_data[i] = text_boxes[i].get()
-            
+
             # Calculate price change
             percent_change = 0
             if current_data[9] not in ['Legacy', 'None', None] and entry_data[9] not in ['Legacy', 'None', None]:
                 try:
                     percent_change = calculate_percentage_change(current_data[9], entry_data[9])
-                    
+
                     if percent_change and abs(percent_change) >= 1:
                         update_price_history(entry_data, current_data)
                 except ValueError as e:
                     logger.error(f"Price conversion error: {e}")
-            
+
             # Alert on significant price changes
             if percent_change and abs(percent_change) >= 20:
                 approve = messagebox.askyesno(
-                    "Price Change Alert", 
+                    "Price Change Alert",
                     f"Price change is significant: {percent_change}%. Proceed?"
                 )
                 if not approve:
                     return
             elif percent_change and percent_change <= -10:
                 approve = messagebox.askyesno(
-                    "Price Change Alert", 
+                    "Price Change Alert",
                     f"Price decrease: {percent_change}%. Proceed?"
                 )
                 if not approve:
                     return
-            
+
             # Save to Excel
             if save_to_excel(file_path, row_index, entry_data):
+                # Signal extension to close the tab
+                if tab_id:
+                    TABS_TO_CLOSE.add(tab_id)
+                    logger.info(f"Added tab {tab_id} to close queue")
                 root.destroy()
             else:
                 messagebox.showerror("Error", "Failed to save data")
-        
+
         except Exception as e:
             logger.error(f"Error in submit: {e}")
             messagebox.showerror("Error", str(e))
-    
+
     def cancel():
+        # Signal extension to close the tab
+        if tab_id:
+            TABS_TO_CLOSE.add(tab_id)
+            logger.info(f"Added tab {tab_id} to close queue")
         root.quit()
         root.destroy()
 
@@ -767,11 +858,16 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
 
     submit_button = tk.Button(root, text="Submit", command=submit, font=large_font, bg="#4CAF50", fg="white", takefocus=0)
     submit_button.grid(row=len(fields) + 1, column=2, padx=10, pady=10)
-    
+
+    # Bind keyboard shortcuts
+    root.bind('<Control-s>', lambda e: submit())
+    root.bind('<Control-S>', lambda e: submit())
+    root.bind('<Control-x>', lambda e: cancel())
+    root.bind('<Control-X>', lambda e: cancel())
+
     root.protocol("WM_DELETE_WINDOW", cancel)
     root.transient()
     root.grab_set()
-    root.focus_set()
 
     # Center the window after all widgets are added
     root.update_idletasks()
@@ -783,6 +879,12 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
     center_y = int((screen_height - window_height) / 2)
     root.geometry(f"+{center_x}+{center_y}")
 
+    # Make window active and bring to front
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after_idle(root.attributes, '-topmost', False)
+    root.focus_force()
+
     root.mainloop()
 
 #
@@ -791,27 +893,30 @@ def user_form(current_data, entry_data, fields, file_path, row_index):
 def process_item(vendor_name, part_number, current_data, entry_data):
     """Orchestrate the scraping workflow"""
     logger.info(f"Processing {vendor_name} part {part_number}")
-    
+
     # Open browser
     if not BrowserController.open_vendor_page(vendor_name, part_number):
         logger.error("Failed to open browser")
-        return False
-    
-    # Wait for scraped data
-    raw_data = BrowserController.wait_for_scraped_data(timeout=30)
-    
+        return None
+
+    # Wait for scraped data (reduced timeout for faster workflow)
+    raw_data = BrowserController.wait_for_scraped_data(timeout=15)
+
     if not raw_data:
         logger.warning("No data received from extension")
         messagebox.showwarning("Timeout", "No data received. Extension may not be installed or page took too long.")
-        return False
-    
+        return None
+
+    # Extract tab ID
+    tab_id = raw_data.get('tabId')
+
     # Parse data
     parsed_data = parse_vendor_data(raw_data, vendor_name)
-    
+
     if not parsed_data:
         logger.error("Failed to parse vendor data")
-        return False
-    
+        return None
+
     # Update entry_data
     entry_data[1] = parsed_data['mfr_number']
     entry_data[2] = parsed_data['brand']
@@ -821,9 +926,9 @@ def process_item(vendor_name, part_number, current_data, entry_data):
     entry_data[9] = parsed_data['price']
     entry_data[10] = calculate_percentage_change(current_data[9], parsed_data['price'])
     entry_data[11] = datetime.now().strftime("%m/%d/%Y")
-    
+
     logger.info(f"Data parsed successfully: Price=${parsed_data['price']}, Qty={parsed_data['qty']}")
-    return True
+    return tab_id
 
 def is_vendor_auto(vendor):
     """Check if vendor supports automatic scraping"""
@@ -832,38 +937,46 @@ def is_vendor_auto(vendor):
 def main_loop(file_path):
     """Main application loop"""
     logger.info("Starting main application loop")
-    
+
     while True:
         search_string = get_search_string()
-        
+
         if search_string is None:
             logger.info("User cancelled, exiting")
             break
-        
+
         search_string = sanitize_string(search_string).upper()
         logger.info(f"Searching for: {search_string}")
-        
+
         try:
             # Search Excel
             result = process_excel(file_path, search_string)
             if result is None or result[0] is None:
                 continue
-            
+
             current_data, row_index = result
             entry_data = current_data.copy()
-            
+
             # Check if vendor supports auto-scraping
+            tab_id = None
             vendor_name = current_data[6]
             if is_vendor_auto(vendor_name):
                 part_number = current_data[7]
                 logger.info(f"Auto-scraping enabled for {vendor_name}")
-                process_item(vendor_name, part_number, current_data, entry_data)
+                tab_id = process_item(vendor_name, part_number, current_data, entry_data)
+
+                # Even if scraping timed out, check if a tab was registered
+                if tab_id is None and REGISTERED_TABS:
+                    # Get the most recently registered tab (likely the one we just opened)
+                    most_recent = max(REGISTERED_TABS.items(), key=lambda x: x[1]['timestamp'])
+                    tab_id = most_recent[0]
+                    logger.info(f"Using registered tab {tab_id} (scraping may have timed out)")
             else:
                 logger.info(f"Manual vendor: {vendor_name}")
-            
-            # Show user form
-            user_form(current_data, entry_data, FIELDS, file_path, row_index)
-        
+
+            # Show user form (pass tab_id if available)
+            user_form(current_data, entry_data, FIELDS, file_path, row_index, tab_id)
+
         except Exception as e:
             logger.error(f"Error in main loop: {e}", exc_info=True)
             messagebox.showerror("Error", f"An error occurred: {str(e)}")
