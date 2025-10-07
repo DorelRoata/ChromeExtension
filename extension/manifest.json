@@ -3,6 +3,7 @@
   "version": "2.0",
   "manifest_version": 3,
   "description": "Scrapes pricing data from Grainger, McMaster-Carr, Festo, and Zoro",
+  "homepage_url": "https://github.com/DorelRoata/ChromeExtension",
   "permissions": ["storage", "tabs"],
   "host_permissions": [
     "https://www.grainger.com/*",
