@@ -395,12 +395,52 @@
     setTimeout(() => notification.remove(), 3000);
   }
 
+  // Store last scraped data
+  let lastScrapedData = null;
+
   // Listen for manual trigger from popup
   const messageListener = (request, sender, sendResponse) => {
     if (request.action === 'scrapeNow') {
       const vendor = detectVendor();
-      extractAndSend(vendor);
-      sendResponse({ success: true });
+      if (vendor) {
+        try {
+          let data;
+          switch(vendor) {
+            case 'grainger':
+              data = extractGraingerData();
+              break;
+            case 'mcmaster':
+              data = extractMcMasterData();
+              break;
+            case 'festo':
+              data = extractFestoData();
+              break;
+            case 'zoro':
+              data = extractZoroData();
+              break;
+          }
+
+          if (data) {
+            data.vendor = vendor;
+            lastScrapedData = data;
+            sendToServer(data);
+            sendResponse({ success: true });
+          } else {
+            sendResponse({ success: false });
+          }
+        } catch (error) {
+          console.error('Extraction failed:', error);
+          sendResponse({ success: false });
+        }
+      } else {
+        sendResponse({ success: false });
+      }
+      return true;
+    }
+
+    if (request.action === 'getData') {
+      sendResponse({ data: lastScrapedData });
+      return true;
     }
   };
   chrome.runtime.onMessage.addListener(messageListener);
