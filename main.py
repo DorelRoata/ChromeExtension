@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 
 import time
 import queue
@@ -8,7 +9,7 @@ import threading
 import webbrowser
 import subprocess
 import tkinter as tk
-from tkinter import simpledialog, messagebox
+from tkinter import simpledialog, messagebox, scrolledtext
 import tkinter.font as tkFont
 from datetime import datetime
 from openpyxl import load_workbook
@@ -468,7 +469,7 @@ def process_excel(file_path, search_string):
         logger.info(f"Searching Excel for ACI#: {search_string}")
         workbook = load_workbook(file_path, read_only=False, keep_vba=True)
         sheet = workbook["Purchase Parts"]
-        
+
         for row in sheet.iter_rows(min_row=1, max_col=15, max_row=sheet.max_row):
             cell_value = row[0].value
             # Cast both to string and strip whitespace for comparison
@@ -481,10 +482,9 @@ def process_excel(file_path, search_string):
                     current_data = [sanitize_string(cell.value) for cell in row[:15]]
                     logger.info(f"Found match at row {row_index}")
                     return current_data, row_index
-        
+
         logger.info("No match found")
-        messagebox.showinfo("Info", "No match found for that ACI number")
-        return None, None
+        return "NOT_FOUND", None
     except Exception as e:
         logger.error(f"Excel error: {e}")
         return None, None
@@ -498,10 +498,10 @@ def save_to_excel(file_path, row_index, data):
     try:
         workbook = load_workbook(file_path, read_only=False, keep_vba=True)
         sheet = workbook["Purchase Parts"]
-        
+
         for idx, value in enumerate(data):
             sheet.cell(row=row_index, column=idx + 1, value=value)
-        
+
         workbook.save(filename=file_path)
         logger.info("Excel file saved successfully")
         return True
@@ -512,6 +512,143 @@ def save_to_excel(file_path, row_index, data):
         if workbook:
             workbook.close()
 
+def add_new_row_to_excel(file_path, aci_number, vendor, vendor_part_number):
+    """Add a new row to Excel with basic information"""
+    workbook = None
+    try:
+        workbook = load_workbook(file_path, read_only=False, keep_vba=True)
+        sheet = workbook["Purchase Parts"]
+
+        # Find the next empty row
+        next_row = sheet.max_row + 1
+
+        # Create new entry with ACI#, Vendor, and Vendor Part#
+        new_data = [None] * 15
+        new_data[0] = aci_number  # ACI #
+        new_data[6] = vendor  # Vendor
+        new_data[7] = vendor_part_number  # Vendor Part #
+        new_data[11] = datetime.now().strftime("%m/%d/%Y")  # Date
+
+        # Write to sheet
+        for idx, value in enumerate(new_data):
+            sheet.cell(row=next_row, column=idx + 1, value=value)
+
+        workbook.save(filename=file_path)
+        logger.info(f"New ACI# {aci_number} added at row {next_row}")
+        return new_data, next_row
+    except Exception as e:
+        logger.error(f"Error adding new row: {e}")
+        return None, None
+    finally:
+        if workbook:
+            workbook.close()
+
+def prompt_add_new_aci(aci_number):
+    """Ask user if they want to add a new ACI number"""
+    response = messagebox.askyesno(
+        "ACI Number Not Found",
+        f"ACI# {aci_number} not found in the database.\n\n"
+        "Would you like to add this as a new entry?"
+    )
+    return response
+
+def get_new_aci_details(aci_number):
+    """Get vendor and vendor part number for new ACI"""
+    global _APP_ICON_PHOTO
+    root = tk.Tk()
+    root.title(f"Add New ACI# - {aci_number}")
+
+    # Set window icon
+    try:
+        if getattr(sys, 'frozen', False):
+            icon_ico = os.path.join(sys._MEIPASS, 'icon.ico')
+            icon_png = os.path.join(sys._MEIPASS, 'icon.png')
+        else:
+            icon_ico = 'icon.ico'
+            icon_png = 'icon.png'
+
+        if os.path.exists(icon_ico):
+            root.iconbitmap(icon_ico)
+        elif os.path.exists(icon_png):
+            if _APP_ICON_PHOTO is None:
+                _APP_ICON_PHOTO = tk.PhotoImage(file=icon_png)
+            root.iconphoto(True, _APP_ICON_PHOTO)
+    except Exception as e:
+        logger.warning(f"Could not set window icon: {e}")
+
+    # Set window size
+    window_width = 400
+    window_height = 220
+
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
+    root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
+
+    # Bring window to front
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after_idle(root.attributes, '-topmost', False)
+
+    # Instruction label
+    tk.Label(root, text=f"Adding New ACI#: {aci_number}", font=("Arial", 11, "bold")).pack(pady=(15, 10))
+
+    # Vendor dropdown
+    tk.Label(root, text="Vendor:", font=("Arial", 10)).pack(pady=(10, 2))
+    vendor_var = tk.StringVar(root)
+    vendor_options = ['Grainger', 'McMaster-Carr', 'McMaster', 'Festo', 'Zoro', 'Other']
+    vendor_var.set(vendor_options[0])
+    vendor_menu = tk.OptionMenu(root, vendor_var, *vendor_options)
+    vendor_menu.config(font=("Arial", 10), width=20)
+    vendor_menu.pack(pady=2)
+
+    # Vendor Part Number entry
+    tk.Label(root, text="Vendor Part Number:", font=("Arial", 10)).pack(pady=(10, 2))
+    part_entry = tk.Entry(root, font=("Arial", 10), width=25)
+    part_entry.pack(pady=2)
+
+    result = {'vendor': None, 'part_number': None}
+
+    def on_submit():
+        vendor = vendor_var.get()
+        part_number = part_entry.get().strip()
+
+        if not part_number:
+            messagebox.showwarning("Missing Information", "Please enter a Vendor Part Number")
+            return
+
+        result['vendor'] = vendor
+        result['part_number'] = part_number
+        root.destroy()
+
+    def on_cancel():
+        root.destroy()
+
+    part_entry.bind('<Return>', lambda e: on_submit())
+    part_entry.bind('<Escape>', lambda e: on_cancel())
+
+    # Buttons
+    button_frame = tk.Frame(root)
+    button_frame.pack(pady=15)
+
+    cancel_btn = tk.Button(button_frame, text="Cancel", command=on_cancel, font=("Arial", 10), bg="#f44336", fg="white", width=10)
+    cancel_btn.pack(side=tk.LEFT, padx=5)
+
+    submit_btn = tk.Button(button_frame, text="Add", command=on_submit, font=("Arial", 10), bg="#4CAF50", fg="white", width=10)
+    submit_btn.pack(side=tk.LEFT, padx=5)
+
+    root.protocol("WM_DELETE_WINDOW", on_cancel)
+
+    root.update_idletasks()
+    root.deiconify()
+    root.focus_force()
+    part_entry.focus_set()
+
+    root.mainloop()
+
+    return result['vendor'], result['part_number']
+
 #
 # GUI COMPONENTS
 #
@@ -519,7 +656,7 @@ def save_to_excel(file_path, row_index, data):
 _APP_ICON_PHOTO = None
 
 def get_search_string():
-    """Prompt user for ACI number"""
+    """Prompt user for ACI number or batch update"""
     global _APP_ICON_PHOTO
     root = tk.Tk()
     root.title("Advantage Conveyor")
@@ -547,7 +684,7 @@ def get_search_string():
 
     # Set window size
     window_width = 320
-    window_height = 160
+    window_height = 200
 
     # Get screen dimensions
     screen_width = root.winfo_screenwidth()
@@ -577,14 +714,21 @@ def get_search_string():
     entry = tk.Entry(root, font=("Arial", 10), width=25)
     entry.pack(pady=8)
 
-    result = {'value': None}
+    result = {'value': None, 'mode': 'single'}
 
     def on_submit():
         result['value'] = entry.get()
+        result['mode'] = 'single'
+        root.destroy()
+
+    def on_batch():
+        result['value'] = 'BATCH_MODE'
+        result['mode'] = 'batch'
         root.destroy()
 
     def on_cancel():
         result['value'] = None
+        result['mode'] = 'single'
         root.destroy()
 
     # Bind Enter key to submit and Escape key to cancel
@@ -593,13 +737,17 @@ def get_search_string():
 
     # Buttons
     button_frame = tk.Frame(root)
-    button_frame.pack(pady=12)
+    button_frame.pack(pady=8)
 
     cancel_btn = tk.Button(button_frame, text="Cancel", command=on_cancel, font=("Arial", 10), bg="#f44336", fg="white", width=10)
     cancel_btn.pack(side=tk.LEFT, padx=5)
 
     submit_btn = tk.Button(button_frame, text="Submit", command=on_submit, font=("Arial", 10), bg="#4CAF50", fg="white", width=10)
     submit_btn.pack(side=tk.LEFT, padx=5)
+
+    # Batch Update button
+    batch_btn = tk.Button(root, text="Batch Update", command=on_batch, font=("Arial", 10), bg="#2196F3", fg="white", width=15)
+    batch_btn.pack(pady=8)
 
     root.protocol("WM_DELETE_WINDOW", on_cancel)
 
@@ -612,7 +760,7 @@ def get_search_string():
 
     root.mainloop()
 
-    return result['value']
+    return result
 
 def compare_and_highlight(widget, current_value, new_value):
     """Highlight widget if values differ"""
@@ -934,27 +1082,444 @@ def is_vendor_auto(vendor):
     """Check if vendor supports automatic scraping"""
     return vendor.lower() in ['grainger', 'mcmaster-carr', 'mcmaster', 'zoro', 'festo']
 
+#
+# BATCH UPDATE FUNCTIONS
+#
+def batch_update_dialog():
+    """Dialog to get list of ACI numbers for batch update"""
+    global _APP_ICON_PHOTO
+    root = tk.Tk()
+    root.title("Batch Update - Enter ACI Numbers")
+
+    # Set window icon
+    try:
+        if getattr(sys, 'frozen', False):
+            icon_ico = os.path.join(sys._MEIPASS, 'icon.ico')
+            icon_png = os.path.join(sys._MEIPASS, 'icon.png')
+        else:
+            icon_ico = 'icon.ico'
+            icon_png = 'icon.png'
+
+        if os.path.exists(icon_ico):
+            root.iconbitmap(icon_ico)
+        elif os.path.exists(icon_png):
+            if _APP_ICON_PHOTO is None:
+                _APP_ICON_PHOTO = tk.PhotoImage(file=icon_png)
+            root.iconphoto(True, _APP_ICON_PHOTO)
+    except Exception as e:
+        logger.warning(f"Could not set window icon: {e}")
+
+    # Set window size
+    window_width = 500
+    window_height = 400
+
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
+    root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
+
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after_idle(root.attributes, '-topmost', False)
+
+    # Instructions
+    tk.Label(root, text="Batch Update", font=("Arial", 12, "bold")).pack(pady=(15, 5))
+    tk.Label(root, text="Enter ACI numbers (one per line or comma-separated):", font=("Arial", 10)).pack(pady=5)
+
+    # Text area
+    text_area = scrolledtext.ScrolledText(root, font=("Arial", 10), width=50, height=15)
+    text_area.pack(pady=10, padx=20)
+
+    result = {'aci_list': None}
+
+    def on_submit():
+        text = text_area.get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showwarning("Empty List", "Please enter at least one ACI number")
+            return
+
+        # Parse ACI numbers (support both newlines and commas)
+        aci_list = []
+        for line in text.split('\n'):
+            for item in line.split(','):
+                aci = item.strip()
+                if aci:
+                    aci_list.append(aci.upper())
+
+        if not aci_list:
+            messagebox.showwarning("Empty List", "No valid ACI numbers found")
+            return
+
+        result['aci_list'] = aci_list
+        root.destroy()
+
+    def on_cancel():
+        root.destroy()
+
+    # Buttons
+    button_frame = tk.Frame(root)
+    button_frame.pack(pady=10)
+
+    cancel_btn = tk.Button(button_frame, text="Cancel", command=on_cancel, font=("Arial", 10), bg="#f44336", fg="white", width=12)
+    cancel_btn.pack(side=tk.LEFT, padx=5)
+
+    submit_btn = tk.Button(button_frame, text="Start Batch", command=on_submit, font=("Arial", 10), bg="#4CAF50", fg="white", width=12)
+    submit_btn.pack(side=tk.LEFT, padx=5)
+
+    root.protocol("WM_DELETE_WINDOW", on_cancel)
+    root.focus_force()
+    text_area.focus_set()
+
+    root.mainloop()
+
+    return result['aci_list']
+
+def validate_batch_match(current_data, scraped_data):
+    """Validate if scraped data matches current data for batch update"""
+    # Check description match (fuzzy)
+    current_desc = str(current_data[3]).strip().lower() if current_data[3] else ""
+    scraped_desc = str(scraped_data.get('description', '')).strip().lower()
+
+    if not scraped_desc or scraped_desc == "not found":
+        return False, "Description not found"
+
+    # Simple fuzzy match - check if descriptions are similar
+    desc_match = current_desc in scraped_desc or scraped_desc in current_desc or current_desc == scraped_desc
+
+    if not desc_match:
+        return False, "Description mismatch"
+
+    # Check part number match
+    current_part = str(current_data[1]).strip() if current_data[1] else ""
+    scraped_part = str(scraped_data.get('mfr_number', '')).strip()
+
+    # Allow some flexibility in part number matching
+    part_match = current_part.lower() == scraped_part.lower() if current_part and scraped_part != "Not Found" else True
+
+    if current_part and scraped_part != "Not Found" and not part_match:
+        return False, "Part number mismatch"
+
+    # Check unit match
+    current_unit = str(current_data[5]).strip().lower() if current_data[5] else ""
+    scraped_unit = str(scraped_data.get('unit', '')).strip().lower()
+
+    unit_match = current_unit == scraped_unit if current_unit and scraped_unit != "not found" else True
+
+    if current_unit and scraped_unit != "not found" and not unit_match:
+        return False, "Unit mismatch"
+
+    return True, "Match"
+
+def batch_update_worker(file_path, aci_list):
+    """Process batch update for list of ACI numbers"""
+    results = {
+        'updated': [],
+        'skipped': [],
+        'errors': [],
+        'not_found': []
+    }
+
+    total = len(aci_list)
+    logger.info(f"Starting batch update for {total} ACI numbers")
+
+    for idx, aci in enumerate(aci_list):
+        logger.info(f"Processing {idx + 1}/{total}: {aci}")
+
+        try:
+            # Look up ACI in Excel
+            current_data, row_index = process_excel(file_path, aci)
+
+            if current_data == "NOT_FOUND":
+                results['not_found'].append(aci)
+                logger.info(f"  ACI {aci} not found in Excel")
+                continue
+
+            if current_data is None:
+                results['errors'].append((aci, "Excel error"))
+                logger.error(f"  Error loading ACI {aci}")
+                continue
+
+            # Check if vendor is auto-supported
+            vendor_name = current_data[6]
+            if not is_vendor_auto(vendor_name):
+                results['skipped'].append((aci, f"Manual vendor: {vendor_name}"))
+                logger.info(f"  Skipped {aci} - manual vendor")
+                continue
+
+            # Scrape data
+            part_number = current_data[7]
+            entry_data = current_data.copy()
+
+            logger.info(f"  Opening {vendor_name} page for {part_number}")
+            if not BrowserController.open_vendor_page(vendor_name, part_number):
+                results['errors'].append((aci, "Failed to open browser"))
+                continue
+
+            raw_data = BrowserController.wait_for_scraped_data(timeout=15)
+
+            if not raw_data:
+                results['errors'].append((aci, "Scraping timeout"))
+                logger.warning(f"  Timeout for {aci}")
+                # Close any registered tabs
+                if REGISTERED_TABS:
+                    most_recent = max(REGISTERED_TABS.items(), key=lambda x: x[1]['timestamp'])
+                    tab_id = most_recent[0]
+                    TABS_TO_CLOSE.add(tab_id)
+                continue
+
+            tab_id = raw_data.get('tabId')
+            parsed_data = parse_vendor_data(raw_data, vendor_name)
+
+            if not parsed_data:
+                results['errors'].append((aci, "Failed to parse data"))
+                if tab_id:
+                    TABS_TO_CLOSE.add(tab_id)
+                continue
+
+            # Validate match
+            is_match, match_reason = validate_batch_match(current_data, parsed_data)
+
+            if not is_match:
+                results['skipped'].append((aci, match_reason))
+                logger.info(f"  Skipped {aci} - {match_reason}")
+                if tab_id:
+                    TABS_TO_CLOSE.add(tab_id)
+                continue
+
+            # Check price change within ±15%
+            old_price = current_data[9]
+            new_price = parsed_data['price']
+
+            if new_price == "Not Found":
+                results['skipped'].append((aci, "Price not found"))
+                if tab_id:
+                    TABS_TO_CLOSE.add(tab_id)
+                continue
+
+            percent_change = calculate_percentage_change(old_price, new_price)
+
+            if percent_change is None or abs(percent_change) > 15:
+                reason = f"Price change {percent_change}% exceeds ±15%"
+                results['skipped'].append((aci, reason))
+                logger.info(f"  Skipped {aci} - {reason}")
+                if tab_id:
+                    TABS_TO_CLOSE.add(tab_id)
+                continue
+
+            # Update entry_data
+            entry_data[9] = new_price
+            entry_data[10] = percent_change
+            entry_data[11] = datetime.now().strftime("%m/%d/%Y")
+
+            if percent_change and abs(percent_change) >= 1:
+                update_price_history(entry_data, current_data)
+
+            # Save to Excel
+            if save_to_excel(file_path, row_index, entry_data):
+                results['updated'].append((aci, f"{old_price} → {new_price} ({percent_change:+.1f}%)"))
+                logger.info(f"  Updated {aci}: {old_price} → {new_price} ({percent_change:+.1f}%)")
+            else:
+                results['errors'].append((aci, "Failed to save"))
+
+            # Close tab
+            if tab_id:
+                TABS_TO_CLOSE.add(tab_id)
+
+            # Small delay between items
+            time.sleep(0.5)
+
+        except Exception as e:
+            results['errors'].append((aci, str(e)))
+            logger.error(f"  Error processing {aci}: {e}", exc_info=True)
+
+    return results
+
+def show_batch_summary(results):
+    """Display batch update summary"""
+    global _APP_ICON_PHOTO
+    root = tk.Tk()
+    root.title("Batch Update Summary")
+
+    # Set window icon
+    try:
+        if getattr(sys, 'frozen', False):
+            icon_ico = os.path.join(sys._MEIPASS, 'icon.ico')
+            icon_png = os.path.join(sys._MEIPASS, 'icon.png')
+        else:
+            icon_ico = 'icon.ico'
+            icon_png = 'icon.png'
+
+        if os.path.exists(icon_ico):
+            root.iconbitmap(icon_ico)
+        elif os.path.exists(icon_png):
+            if _APP_ICON_PHOTO is None:
+                _APP_ICON_PHOTO = tk.PhotoImage(file=icon_png)
+            root.iconphoto(True, _APP_ICON_PHOTO)
+    except Exception as e:
+        logger.warning(f"Could not set window icon: {e}")
+
+    # Set window size
+    window_width = 700
+    window_height = 500
+
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
+    root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
+
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after_idle(root.attributes, '-topmost', False)
+
+    # Title
+    tk.Label(root, text="Batch Update Complete", font=("Arial", 14, "bold")).pack(pady=(15, 10))
+
+    # Summary counts
+    summary_frame = tk.Frame(root)
+    summary_frame.pack(pady=10)
+
+    tk.Label(summary_frame, text=f"✓ Updated: {len(results['updated'])}", font=("Arial", 11), fg="green").grid(row=0, column=0, padx=15)
+    tk.Label(summary_frame, text=f"⊘ Skipped: {len(results['skipped'])}", font=("Arial", 11), fg="orange").grid(row=0, column=1, padx=15)
+    tk.Label(summary_frame, text=f"✗ Errors: {len(results['errors'])}", font=("Arial", 11), fg="red").grid(row=0, column=2, padx=15)
+    tk.Label(summary_frame, text=f"? Not Found: {len(results['not_found'])}", font=("Arial", 11), fg="gray").grid(row=0, column=3, padx=15)
+
+    # Details text area
+    text_area = scrolledtext.ScrolledText(root, font=("Courier", 9), width=85, height=20)
+    text_area.pack(pady=10, padx=20)
+
+    # Build details
+    details = []
+
+    if results['updated']:
+        details.append("=" * 80)
+        details.append("UPDATED:")
+        details.append("=" * 80)
+        for aci, info in results['updated']:
+            details.append(f"  {aci}: {info}")
+
+    if results['skipped']:
+        details.append("\n" + "=" * 80)
+        details.append("SKIPPED:")
+        details.append("=" * 80)
+        for aci, reason in results['skipped']:
+            details.append(f"  {aci}: {reason}")
+
+    if results['errors']:
+        details.append("\n" + "=" * 80)
+        details.append("ERRORS:")
+        details.append("=" * 80)
+        for aci, error in results['errors']:
+            details.append(f"  {aci}: {error}")
+
+    if results['not_found']:
+        details.append("\n" + "=" * 80)
+        details.append("NOT FOUND:")
+        details.append("=" * 80)
+        for aci in results['not_found']:
+            details.append(f"  {aci}")
+
+    text_area.insert("1.0", "\n".join(details))
+    text_area.config(state="disabled")
+
+    # Close button
+    close_btn = tk.Button(root, text="Close", command=root.destroy, font=("Arial", 11), bg="#2196F3", fg="white", width=15)
+    close_btn.pack(pady=15)
+
+    root.protocol("WM_DELETE_WINDOW", root.destroy)
+    root.focus_force()
+
+    root.mainloop()
+
 def main_loop(file_path):
     """Main application loop"""
     logger.info("Starting main application loop")
 
     while True:
-        search_string = get_search_string()
+        result = get_search_string()
 
-        if search_string is None:
+        if result['value'] is None:
             logger.info("User cancelled, exiting")
             break
 
-        search_string = sanitize_string(search_string).upper()
+        # Check if batch mode
+        if result['mode'] == 'batch':
+            logger.info("Batch update mode selected")
+
+            # Get list of ACI numbers
+            aci_list = batch_update_dialog()
+
+            if not aci_list:
+                logger.info("Batch update cancelled")
+                continue
+
+            # Process batch
+            logger.info(f"Starting batch update for {len(aci_list)} ACIs")
+            batch_results = batch_update_worker(file_path, aci_list)
+
+            # Show summary
+            show_batch_summary(batch_results)
+            logger.info("Batch update completed")
+            continue
+
+        # Single mode
+        search_string = sanitize_string(result['value']).upper()
         logger.info(f"Searching for: {search_string}")
 
         try:
             # Search Excel
-            result = process_excel(file_path, search_string)
-            if result is None or result[0] is None:
+            result_data = process_excel(file_path, search_string)
+
+            if result_data is None or result_data[0] is None:
                 continue
 
-            current_data, row_index = result
+            # Handle "NOT_FOUND" case - offer to add new ACI
+            if result_data[0] == "NOT_FOUND":
+                logger.info(f"ACI {search_string} not found")
+
+                if prompt_add_new_aci(search_string):
+                    # Get vendor and part number
+                    vendor, part_number = get_new_aci_details(search_string)
+
+                    if not vendor or not part_number:
+                        logger.info("User cancelled adding new ACI")
+                        continue
+
+                    # Add new row to Excel
+                    new_data, new_row_index = add_new_row_to_excel(file_path, search_string, vendor, part_number)
+
+                    if not new_data:
+                        messagebox.showerror("Error", "Failed to add new ACI to Excel")
+                        continue
+
+                    # Use the new data as current data
+                    current_data = new_data
+                    row_index = new_row_index
+                    entry_data = current_data.copy()
+
+                    # If auto vendor, try to scrape
+                    tab_id = None
+                    if is_vendor_auto(vendor):
+                        logger.info(f"Auto-scraping enabled for new entry: {vendor}")
+                        tab_id = process_item(vendor, part_number, current_data, entry_data)
+
+                        # Check for registered tabs if scraping timed out
+                        if tab_id is None and REGISTERED_TABS:
+                            most_recent = max(REGISTERED_TABS.items(), key=lambda x: x[1]['timestamp'])
+                            tab_id = most_recent[0]
+                            logger.info(f"Using registered tab {tab_id}")
+                    else:
+                        logger.info(f"Manual vendor for new entry: {vendor}")
+
+                    # Show user form
+                    user_form(current_data, entry_data, FIELDS, file_path, row_index, tab_id)
+                else:
+                    logger.info("User declined to add new ACI")
+                continue
+
+            # Regular flow - ACI found in Excel
+            current_data, row_index = result_data
             entry_data = current_data.copy()
 
             # Check if vendor supports auto-scraping
@@ -987,6 +1552,24 @@ def main_loop(file_path):
 #
 def main():
     """Application entry point"""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='Multi-Vendor Price Scraper - Auto-update pricing data from multiple suppliers',
+        epilog='If no arguments provided, runs in interactive GUI mode'
+    )
+    parser.add_argument(
+        '--batch',
+        type=str,
+        help='Batch update mode: comma-separated list of ACI numbers (e.g., "ACI001,ACI002,ACI003")'
+    )
+    parser.add_argument(
+        '--batch-file',
+        type=str,
+        help='Batch update mode: path to file containing ACI numbers (one per line)'
+    )
+
+    args = parser.parse_args()
+
     try:
         # Determine file path - check multiple extensions
         server_file_paths = [
@@ -1012,7 +1595,11 @@ def main():
                 if os.path.exists(path):
                     file_path = path
                     logger.info(f"Using local file: {file_path}")
-                    messagebox.showwarning("Warning", "Server file not found. Using local file.")
+                    # Only show warning in GUI mode
+                    if not args.batch and not args.batch_file:
+                        messagebox.showwarning("Warning", "Server file not found. Using local file.")
+                    else:
+                        logger.warning("Server file not found. Using local file.")
                     break
 
         # If still no file found, show error and exit
@@ -1023,14 +1610,95 @@ def main():
                 "- Z:\\ACOD\\MMLV2.xlsm (or .xlsx)\n"
                 "- MML.xlsm (or .xlsx) in the program directory"
             )
-            messagebox.showerror("Error", error_msg)
+            if not args.batch and not args.batch_file:
+                messagebox.showerror("Error", error_msg)
             logger.error("No Excel file found")
             sys.exit(1)
 
         # Start Flask server
         start_flask_server()
 
-        # Start main loop
+        # Check if batch mode requested via command line
+        if args.batch or args.batch_file:
+            logger.info("Batch mode activated via command line")
+
+            # Parse ACI list
+            aci_list = []
+            if args.batch:
+                # Parse comma-separated list
+                for item in args.batch.split(','):
+                    aci = item.strip().upper()
+                    if aci:
+                        aci_list.append(aci)
+                logger.info(f"Batch list from --batch: {len(aci_list)} ACIs")
+
+            elif args.batch_file:
+                # Read from file
+                if not os.path.exists(args.batch_file):
+                    logger.error(f"Batch file not found: {args.batch_file}")
+                    print(f"ERROR: File not found: {args.batch_file}")
+                    sys.exit(1)
+
+                try:
+                    with open(args.batch_file, 'r') as f:
+                        for line in f:
+                            aci = line.strip().upper()
+                            if aci and not aci.startswith('#'):  # Allow comments
+                                aci_list.append(aci)
+                    logger.info(f"Batch list from file: {len(aci_list)} ACIs")
+                except Exception as e:
+                    logger.error(f"Failed to read batch file: {e}")
+                    print(f"ERROR: Failed to read file: {e}")
+                    sys.exit(1)
+
+            if not aci_list:
+                logger.error("No ACI numbers found in batch input")
+                print("ERROR: No ACI numbers found in batch input")
+                sys.exit(1)
+
+            # Run batch update
+            logger.info(f"Starting CLI batch update for {len(aci_list)} ACIs")
+            print(f"Starting batch update for {len(aci_list)} ACI numbers...")
+
+            batch_results = batch_update_worker(file_path, aci_list)
+
+            # Print results to console
+            print("\n" + "=" * 80)
+            print("BATCH UPDATE COMPLETE")
+            print("=" * 80)
+            print(f"✓ Updated:   {len(batch_results['updated'])}")
+            print(f"⊘ Skipped:   {len(batch_results['skipped'])}")
+            print(f"✗ Errors:    {len(batch_results['errors'])}")
+            print(f"? Not Found: {len(batch_results['not_found'])}")
+            print("=" * 80)
+
+            if batch_results['updated']:
+                print("\nUPDATED:")
+                for aci, info in batch_results['updated']:
+                    print(f"  {aci}: {info}")
+
+            if batch_results['skipped']:
+                print("\nSKIPPED:")
+                for aci, reason in batch_results['skipped']:
+                    print(f"  {aci}: {reason}")
+
+            if batch_results['errors']:
+                print("\nERRORS:")
+                for aci, error in batch_results['errors']:
+                    print(f"  {aci}: {error}")
+
+            if batch_results['not_found']:
+                print("\nNOT FOUND:")
+                for aci in batch_results['not_found']:
+                    print(f"  {aci}")
+
+            print("\n" + "=" * 80)
+            logger.info("CLI batch update completed")
+
+            # Exit after batch processing
+            sys.exit(0)
+
+        # Normal GUI mode - Start main loop
         main_loop(file_path)
 
     except KeyboardInterrupt:
