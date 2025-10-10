@@ -513,14 +513,15 @@ def save_to_excel(file_path, row_index, data):
             workbook.close()
 
 def add_new_row_to_excel(file_path, aci_number, vendor, vendor_part_number):
-    """Add a new row to Excel with basic information"""
+    """Add a new row to Excel with basic information, copying formatting from last row"""
     workbook = None
     try:
         workbook = load_workbook(file_path, read_only=False, keep_vba=True)
         sheet = workbook["Purchase Parts"]
 
-        # Find the next empty row
-        next_row = sheet.max_row + 1
+        # Find the last row with data and next empty row
+        last_row = sheet.max_row
+        next_row = last_row + 1
 
         # Create new entry with ACI#, Vendor, and Vendor Part#
         new_data = [None] * 15
@@ -529,12 +530,29 @@ def add_new_row_to_excel(file_path, aci_number, vendor, vendor_part_number):
         new_data[7] = vendor_part_number  # Vendor Part #
         new_data[11] = datetime.now().strftime("%m/%d/%Y")  # Date
 
-        # Write to sheet
+        # Copy formatting from last row and write values
+        from copy import copy
         for idx, value in enumerate(new_data):
-            sheet.cell(row=next_row, column=idx + 1, value=value)
+            col_num = idx + 1
+
+            # Get the cell from the last row to copy formatting from
+            source_cell = sheet.cell(row=last_row, column=col_num)
+            target_cell = sheet.cell(row=next_row, column=col_num)
+
+            # Copy cell formatting (font, border, fill, number format, alignment, etc.)
+            if source_cell.has_style:
+                target_cell.font = copy(source_cell.font)
+                target_cell.border = copy(source_cell.border)
+                target_cell.fill = copy(source_cell.fill)
+                target_cell.number_format = copy(source_cell.number_format)
+                target_cell.protection = copy(source_cell.protection)
+                target_cell.alignment = copy(source_cell.alignment)
+
+            # Set the value
+            target_cell.value = value
 
         workbook.save(filename=file_path)
-        logger.info(f"New ACI# {aci_number} added at row {next_row}")
+        logger.info(f"New ACI# {aci_number} added at row {next_row} (formatting copied from row {last_row})")
         return new_data, next_row
     except Exception as e:
         logger.error(f"Error adding new row: {e}")
