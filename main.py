@@ -594,37 +594,22 @@ def get_new_aci_details(aci_number):
     except Exception as e:
         logger.warning(f"Could not set window icon: {e}")
 
-    # Set window size
-    window_width = 400
-    window_height = 220
-
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    center_x = int((screen_width - window_width) / 2)
-    center_y = int((screen_height - window_height) / 2)
-    root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
-
-    # Bring window to front
-    root.lift()
-    root.attributes('-topmost', True)
-    root.after_idle(root.attributes, '-topmost', False)
-
     # Instruction label
-    tk.Label(root, text=f"Adding New ACI#: {aci_number}", font=("Arial", 11, "bold")).pack(pady=(15, 10))
+    tk.Label(root, text=f"Adding New ACI#: {aci_number}", font=("Arial", 11, "bold")).pack(pady=(15, 10), padx=20)
 
     # Vendor dropdown
-    tk.Label(root, text="Vendor:", font=("Arial", 10)).pack(pady=(10, 2))
+    tk.Label(root, text="Vendor:", font=("Arial", 10)).pack(pady=(10, 2), padx=20)
     vendor_var = tk.StringVar(root)
-    vendor_options = ['Grainger', 'McMaster-Carr', 'McMaster', 'Festo', 'Zoro', 'Other']
+    vendor_options = ['Grainger', 'McMaster-Carr', 'Festo', 'Zoro', 'Other']
     vendor_var.set(vendor_options[0])
     vendor_menu = tk.OptionMenu(root, vendor_var, *vendor_options)
     vendor_menu.config(font=("Arial", 10), width=20)
-    vendor_menu.pack(pady=2)
+    vendor_menu.pack(pady=2, padx=20)
 
     # Vendor Part Number entry
-    tk.Label(root, text="Vendor Part Number:", font=("Arial", 10)).pack(pady=(10, 2))
+    tk.Label(root, text="Vendor Part Number:", font=("Arial", 10)).pack(pady=(10, 2), padx=20)
     part_entry = tk.Entry(root, font=("Arial", 10), width=25)
-    part_entry.pack(pady=2)
+    part_entry.pack(pady=2, padx=20)
 
     result = {'vendor': None, 'part_number': None}
 
@@ -648,18 +633,29 @@ def get_new_aci_details(aci_number):
 
     # Buttons
     button_frame = tk.Frame(root)
-    button_frame.pack(pady=15)
+    button_frame.pack(pady=15, padx=20)
 
-    cancel_btn = tk.Button(button_frame, text="Cancel", command=on_cancel, font=("Arial", 10), bg="#f44336", fg="white", width=10)
+    cancel_btn = tk.Button(button_frame, text="Cancel", command=on_cancel, font=("Arial", 10), bg="#f44336", fg="white", width=12)
     cancel_btn.pack(side=tk.LEFT, padx=5)
 
-    submit_btn = tk.Button(button_frame, text="Add", command=on_submit, font=("Arial", 10), bg="#4CAF50", fg="white", width=10)
+    submit_btn = tk.Button(button_frame, text="Add", command=on_submit, font=("Arial", 10), bg="#4CAF50", fg="white", width=12)
     submit_btn.pack(side=tk.LEFT, padx=5)
 
     root.protocol("WM_DELETE_WINDOW", on_cancel)
 
+    # Center the window after all widgets are added
     root.update_idletasks()
-    root.deiconify()
+    window_width = root.winfo_width()
+    window_height = root.winfo_height()
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
+    root.geometry(f"+{center_x}+{center_y}")
+
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after_idle(root.attributes, '-topmost', False)
     root.focus_force()
     part_entry.focus_set()
 
@@ -700,37 +696,17 @@ def get_search_string():
     except Exception as e:
         logger.warning(f"Could not set window icon: {e}")
 
-    # Set window size
-    window_width = 320
-    window_height = 200
-
-    # Get screen dimensions
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-
-    # Calculate center position
-    center_x = int((screen_width - window_width) / 2)
-    center_y = int((screen_height - window_height) / 2)
-
-    # Set geometry with centered position
-    root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
-
-    # Bring window to front and focus it
-    root.lift()
-    root.attributes('-topmost', True)
-    root.after_idle(root.attributes, '-topmost', False)
-
     # Status label
     status_label = tk.Label(root, text="Server Status: Running ✓", font=("Arial", 9), fg="green")
-    status_label.pack(pady=(12, 8))
+    status_label.pack(pady=(12, 8), padx=20)
 
     # Instruction label
     instruction_label = tk.Label(root, text="Enter ACI Number:", font=("Arial", 10))
-    instruction_label.pack(pady=(8, 5))
+    instruction_label.pack(pady=(8, 5), padx=20)
 
     # Entry field
     entry = tk.Entry(root, font=("Arial", 10), width=25)
-    entry.pack(pady=8)
+    entry.pack(pady=8, padx=20)
 
     result = {'value': None, 'mode': 'single'}
 
@@ -755,23 +731,33 @@ def get_search_string():
 
     # Buttons
     button_frame = tk.Frame(root)
-    button_frame.pack(pady=8)
+    button_frame.pack(pady=8, padx=20)
 
-    cancel_btn = tk.Button(button_frame, text="Cancel", command=on_cancel, font=("Arial", 10), bg="#f44336", fg="white", width=10)
+    cancel_btn = tk.Button(button_frame, text="Cancel", command=on_cancel, font=("Arial", 10), bg="#f44336", fg="white", width=12)
     cancel_btn.pack(side=tk.LEFT, padx=5)
 
-    submit_btn = tk.Button(button_frame, text="Submit", command=on_submit, font=("Arial", 10), bg="#4CAF50", fg="white", width=10)
+    submit_btn = tk.Button(button_frame, text="Submit", command=on_submit, font=("Arial", 10), bg="#4CAF50", fg="white", width=12)
     submit_btn.pack(side=tk.LEFT, padx=5)
 
     # Batch Update button
     batch_btn = tk.Button(root, text="Batch Update", command=on_batch, font=("Arial", 10), bg="#2196F3", fg="white", width=15)
-    batch_btn.pack(pady=8)
+    batch_btn.pack(pady=8, padx=20)
 
     root.protocol("WM_DELETE_WINDOW", on_cancel)
 
-    # Ensure window is centered and focused
+    # Center the window after all widgets are added
     root.update_idletasks()
-    root.deiconify()
+    window_width = root.winfo_width()
+    window_height = root.winfo_height()
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
+    root.geometry(f"+{center_x}+{center_y}")
+
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after_idle(root.attributes, '-topmost', False)
     root.focus_force()
     entry.focus_set()
     entry.icursor(tk.END)
@@ -1127,20 +1113,6 @@ def batch_update_dialog():
     except Exception as e:
         logger.warning(f"Could not set window icon: {e}")
 
-    # Set window size
-    window_width = 500
-    window_height = 400
-
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    center_x = int((screen_width - window_width) / 2)
-    center_y = int((screen_height - window_height) / 2)
-    root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
-
-    root.lift()
-    root.attributes('-topmost', True)
-    root.after_idle(root.attributes, '-topmost', False)
-
     # Instructions
     tk.Label(root, text="Batch Update", font=("Arial", 12, "bold")).pack(pady=(15, 5))
     tk.Label(root, text="Enter ACI numbers (one per line or comma-separated):", font=("Arial", 10)).pack(pady=5)
@@ -1186,6 +1158,20 @@ def batch_update_dialog():
     submit_btn.pack(side=tk.LEFT, padx=5)
 
     root.protocol("WM_DELETE_WINDOW", on_cancel)
+
+    # Center the window after all widgets are added
+    root.update_idletasks()
+    window_width = root.winfo_width()
+    window_height = root.winfo_height()
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
+    root.geometry(f"+{center_x}+{center_y}")
+
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after_idle(root.attributes, '-topmost', False)
     root.focus_force()
     text_area.focus_set()
 
@@ -1377,20 +1363,6 @@ def show_batch_summary(results):
     except Exception as e:
         logger.warning(f"Could not set window icon: {e}")
 
-    # Set window size
-    window_width = 700
-    window_height = 500
-
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    center_x = int((screen_width - window_width) / 2)
-    center_y = int((screen_height - window_height) / 2)
-    root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
-
-    root.lift()
-    root.attributes('-topmost', True)
-    root.after_idle(root.attributes, '-topmost', False)
-
     # Title
     tk.Label(root, text="Batch Update Complete", font=("Arial", 14, "bold")).pack(pady=(15, 10))
 
@@ -1446,6 +1418,20 @@ def show_batch_summary(results):
     close_btn.pack(pady=15)
 
     root.protocol("WM_DELETE_WINDOW", root.destroy)
+
+    # Center the window after all widgets are added
+    root.update_idletasks()
+    window_width = root.winfo_width()
+    window_height = root.winfo_height()
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
+    root.geometry(f"+{center_x}+{center_y}")
+
+    root.lift()
+    root.attributes('-topmost', True)
+    root.after_idle(root.attributes, '-topmost', False)
     root.focus_force()
 
     root.mainloop()
