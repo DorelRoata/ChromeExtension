@@ -1,6 +1,6 @@
 # Privacy Policy for Advantage Multi-Vendor Price Scraper
 
-**Effective Date**: October 7, 2024
+**Effective Date**: October 7, 2025
 
 ## Introduction
 Advantage Multi-Vendor Price Scraper ("the Extension") is a Chrome extension designed to scrape pricing data from supported vendor websites (Grainger, McMaster-Carr, Festo, and Zoro) and send it to a user-controlled local server for processing. This Privacy Policy outlines how the Extension handles data, including collection, use, and sharing practices.

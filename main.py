@@ -339,7 +339,7 @@ def format_price_value(value):
 
 def prepare_date_for_excel(value):
     """Prepare date value for Excel - returns datetime object or None"""
-    if value is None or value == '':
+    if value is None or value == '' or value == 'Not Found':
         return None
 
     # If it's already a datetime object, return as-is
@@ -348,6 +348,10 @@ def prepare_date_for_excel(value):
 
     # If it's a string, parse it to datetime
     if isinstance(value, str):
+        # Skip invalid values
+        if value.strip() in ['', 'Not Found', 'None']:
+            return None
+
         # Try to parse common date formats
         for fmt in ['%m/%d/%Y', '%Y-%m-%d', '%m/%d/%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S']:
             try:
@@ -357,6 +361,16 @@ def prepare_date_for_excel(value):
 
     # If we can't parse it, return None
     return None
+
+def clean_value_for_excel(value):
+    """Clean value for Excel - convert empty/invalid strings to None to prevent '0' display"""
+    if value is None:
+        return None
+    if value == '' or value == 'None' or value == 'Not Found':
+        return None
+    if isinstance(value, str) and value.strip() in ['', 'Not Found', 'None']:
+        return None
+    return value
 
 def parse_vendor_data(raw_data, vendor_name):
     """Parse raw scraped data into standardized format"""
@@ -626,6 +640,9 @@ def save_to_excel(file_path, row_index, data):
             # Format dates (fields 10, 13: Date, Last Updated Date)
             elif idx in [10, 13]:
                 formatted_value = prepare_date_for_excel(value)
+            else:
+                # For all other fields, clean empty strings to None
+                formatted_value = clean_value_for_excel(value)
 
             # Write the value
             cell.value = formatted_value
