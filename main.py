@@ -43,6 +43,14 @@ VENDOR_URLS = {
     'zoro': 'https://www.zoro.com/i/{}/'
 }
 
+# Excel column number formats (0-indexed)
+COLUMN_FORMATS = {
+    9: r'_("$"* #,##0.00_);_("$"* \(#,##0.00\);_("$"* "-"??_);_(@_)',  # Unit Price (col 10)
+    10: 'mm-dd-yy',  # Date (col 11)
+    12: r'_("$"* #,##0.00_);_("$"* \(#,##0.00\);_("$"* "-"??_);_(@_)',  # Last Updated Price (col 13)
+    13: 'mm-dd-yy',  # Last Updated Date (col 14)
+}
+
 #
 # FLASK SERVER
 #
@@ -329,6 +337,27 @@ def format_price_value(value):
     except (ValueError, AttributeError):
         return None
 
+def prepare_date_for_excel(value):
+    """Prepare date value for Excel - returns datetime object or None"""
+    if value is None or value == '':
+        return None
+
+    # If it's already a datetime object, return as-is
+    if isinstance(value, datetime):
+        return value
+
+    # If it's a string, parse it to datetime
+    if isinstance(value, str):
+        # Try to parse common date formats
+        for fmt in ['%m/%d/%Y', '%Y-%m-%d', '%m/%d/%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S']:
+            try:
+                return datetime.strptime(value.strip(), fmt)
+            except ValueError:
+                continue
+
+    # If we can't parse it, return None
+    return None
+
 def parse_vendor_data(raw_data, vendor_name):
     """Parse raw scraped data into standardized format"""
     if not raw_data:
@@ -579,13 +608,15 @@ def process_excel(file_path, search_string):
             workbook.close()
 
 def save_to_excel(file_path, row_index, data):
-    """Save updated data to Excel"""
+    """Save updated data to Excel with proper formatting"""
     workbook = None
     try:
         workbook = load_workbook(file_path, read_only=False, keep_vba=True)
         sheet = workbook["Purchase Parts"]
 
         for idx, value in enumerate(data):
+            cell = sheet.cell(row=row_index, column=idx + 1)
+
             # Format the value based on field type
             formatted_value = value
 
@@ -594,9 +625,14 @@ def save_to_excel(file_path, row_index, data):
                 formatted_value = format_price_value(value)
             # Format dates (fields 10, 13: Date, Last Updated Date)
             elif idx in [10, 13]:
-                formatted_value = format_date_value(value)
+                formatted_value = prepare_date_for_excel(value)
 
-            sheet.cell(row=row_index, column=idx + 1, value=formatted_value)
+            # Write the value
+            cell.value = formatted_value
+
+            # Apply number format from COLUMN_FORMATS if defined
+            if idx in COLUMN_FORMATS:
+                cell.number_format = COLUMN_FORMATS[idx]
 
         workbook.save(filename=file_path)
         logger.info("Excel file saved successfully")
@@ -619,12 +655,12 @@ def add_new_row_to_excel(file_path, aci_number, vendor, vendor_part_number):
         last_row = sheet.max_row
         next_row = last_row + 1
 
-        # Create new entry with ACI#, Vendor, and Vendor Part#
+        # Create new entry with ACI#, Vendor, and Vendor Part# (datetime object, not string)
         new_data = [None] * 15
         new_data[0] = aci_number  # ACI #
         new_data[6] = vendor  # Vendor
         new_data[7] = vendor_part_number  # Vendor Part #
-        new_data[10] = datetime.now().strftime("%m/%d/%Y")  # Date
+        new_data[10] = datetime.now()  # Date as datetime object
 
         # Copy formatting from last row and write values
         from copy import copy
@@ -635,21 +671,33 @@ def add_new_row_to_excel(file_path, aci_number, vendor, vendor_part_number):
             source_cell = sheet.cell(row=last_row, column=col_num)
             target_cell = sheet.cell(row=next_row, column=col_num)
 
-            # Copy cell formatting (font, border, fill, number format, alignment, etc.)
+            # Copy cell formatting (font, border, fill, alignment, etc.)
             if source_cell.has_style:
                 target_cell.font = copy(source_cell.font)
                 target_cell.border = copy(source_cell.border)
                 target_cell.fill = copy(source_cell.fill)
-                target_cell.number_format = copy(source_cell.number_format)
                 target_cell.protection = copy(source_cell.protection)
                 target_cell.alignment = copy(source_cell.alignment)
+                # Copy number format from source, will be overridden below if in COLUMN_FORMATS
+                target_cell.number_format = copy(source_cell.number_format)
 
             # Set the value
             target_cell.value = value
 
+            # Override with enforced column formats for critical fields
+            if idx in COLUMN_FORMATS:
+                target_cell.number_format = COLUMN_FORMATS[idx]
+
         workbook.save(filename=file_path)
-        logger.info(f"New ACI# {aci_number} added at row {next_row} (formatting copied from row {last_row})")
-        return new_data, next_row
+        logger.info(f"New ACI# {aci_number} added at row {next_row} (formatting applied)")
+
+        # Format dates for display (convert datetime objects to strings)
+        display_data = new_data.copy()
+        for idx in [10, 13]:  # Date fields
+            if display_data[idx] is not None:
+                display_data[idx] = format_date_value(display_data[idx])
+
+        return display_data, next_row
     except Exception as e:
         logger.error(f"Error adding new row: {e}")
         return None, None
@@ -1013,7 +1061,7 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
                     percent_change = calculate_percentage_change(current_data[9], entry_data[9])
 
                     # Update entry_data with calculated values
-                    entry_data[10] = datetime.now().strftime("%m/%d/%Y")  # Date
+                    entry_data[10] = datetime.now()  # Date
                     entry_data[11] = percent_change  # Change %
 
                     if percent_change and abs(percent_change) >= 1:
@@ -1022,7 +1070,7 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
                     logger.error(f"Price conversion error: {e}")
             else:
                 # Even if we can't calculate percentage change, update the date
-                entry_data[10] = datetime.now().strftime("%m/%d/%Y")
+                entry_data[10] = datetime.now()
 
             # Alert on significant price changes
             if percent_change and abs(percent_change) >= 20:
@@ -1179,7 +1227,7 @@ def process_item(vendor_name, part_number, current_data, entry_data):
     entry_data[4] = parsed_data['qty']
     entry_data[5] = parsed_data['unit']
     entry_data[9] = parsed_data['price']
-    entry_data[10] = datetime.now().strftime("%m/%d/%Y")  # Date
+    entry_data[10] = datetime.now().strftime("%m/%d/%Y")  # Date as string for display
     entry_data[11] = calculate_percentage_change(current_data[9], parsed_data['price'])  # Change %
 
     logger.info(f"Data parsed successfully: Price=${parsed_data['price']}, Qty={parsed_data['qty']}")
@@ -1406,7 +1454,7 @@ def batch_update_worker(file_path, aci_list):
 
             # Update entry_data
             entry_data[9] = new_price
-            entry_data[10] = datetime.now().strftime("%m/%d/%Y")  # Date
+            entry_data[10] = datetime.now()  # Date
             entry_data[11] = percent_change  # Change %
 
             if percent_change and abs(percent_change) >= 1:
