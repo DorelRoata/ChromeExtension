@@ -29,10 +29,10 @@ REGISTERED_TABS = {}  # Track all open tabs {tabId: {'url': url, 'timestamp': ti
 
 # Schema fields
 FIELDS = [
-    'ACI #', 'MFR Part #', 'MFR', 'Description', 'QTY', 'Per', 
-    'Vendor', 'Vendor Part #', 'Legacy', 'Unit Price', 'Change %', 
-    'Date', 'Last Updated Price', 'Last Updated Date', 'Price History'
-    
+    'ACI #', 'MFR Part #', 'MFR', 'Description', 'QTY', 'Per',
+    'Vendor', 'Vendor Part #', 'Legacy', 'Unit Price', 'Date',
+    'Change %', 'Last Updated Price', 'Last Updated Date', 'Price History'
+
 ]
 
 VENDOR_URLS = {
@@ -277,6 +277,58 @@ def sanitize_string(value):
         return value.replace('\xa0', ' ').replace('\u200e', '').strip()
     return value
 
+def format_date_value(value):
+    """Format date value to MM/DD/YYYY string, handling datetime objects"""
+    if value is None or value == '':
+        return None
+
+    # Check if it's a datetime object first (from Excel or Python)
+    if isinstance(value, datetime):
+        return value.strftime("%m/%d/%Y")
+
+    # If it's already a string, try to parse and reformat it
+    if isinstance(value, str):
+        # If it already looks like MM/DD/YYYY, return it
+        if len(value) == 10 and value.count('/') == 2:
+            try:
+                # Validate it's a real date
+                datetime.strptime(value, "%m/%d/%Y")
+                return value
+            except ValueError:
+                pass
+
+        # Try to parse datetime string and reformat
+        # Handle common formats including "2024-02-26 00:00:00" and "2024-02-26"
+        for fmt in ['%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S', '%Y-%m-%d', '%m/%d/%Y']:
+            try:
+                parsed_date = datetime.strptime(str(value).split('.')[0].strip(), fmt)
+                return parsed_date.strftime("%m/%d/%Y")
+            except ValueError:
+                continue
+
+        # If parsing fails, return original
+        return str(value)
+
+    # Fallback to string conversion
+    return str(value) if value is not None else None
+
+def format_price_value(value):
+    """Format price value to numeric type for Excel, cleaning strings"""
+    if value is None or value == '' or value == 'Not Found':
+        return None
+
+    # If already numeric, return as-is
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    # Clean string and convert to float
+    try:
+        # Remove $, commas, and other non-numeric characters except decimal point
+        cleaned = ''.join(c for c in str(value) if c.isdigit() or c == '.')
+        return float(cleaned) if cleaned else None
+    except (ValueError, AttributeError):
+        return None
+
 def parse_vendor_data(raw_data, vendor_name):
     """Parse raw scraped data into standardized format"""
     if not raw_data:
@@ -296,8 +348,7 @@ def parse_vendor_data(raw_data, vendor_name):
         price, unit, qty = cleanup_grainger_data(price_raw, unit, mfr_number)
     elif vendor_key in ['mcmaster', 'mcmaster-carr']:
         price, unit, qty = cleanup_mcmaster_data(price_raw, unit)
-        # For McMaster, use part number as MFR number
-        mfr_number = raw_data.get('partNumber', mfr_number)
+        # For McMaster, don't replace MFR number - leave it empty if not found
     elif vendor_key == 'festo':
         price, unit, qty = cleanup_festo_data(price_raw, unit, raw_data.get('qty'))
     elif vendor_key == 'zoro':
@@ -340,29 +391,51 @@ def cleanup_grainger_data(price, unit, mfr):
 
 def cleanup_mcmaster_data(price, unit):
     """Clean McMaster-specific data"""
-    # Parse price
+    qty = 1
+
+    # Parse price - handle "$10.33 per pack of 10" format
     if "Not Found" not in price:
         if " per " in price.lower():
             parts = price.lower().split("per", 1)
             price = parts[0].replace('$', '').strip()
+
+            # Extract unit and quantity from the "per" part (e.g., "pack of 10")
+            per_part = parts[1].strip()
+            if "pack" in per_part and "of" in per_part:
+                unit = "pack"
+                # Extract quantity number
+                qty_parts = per_part.split("of", 1)
+                if len(qty_parts) > 1:
+                    try:
+                        qty = int(''.join(filter(str.isdigit, qty_parts[1])))
+                    except ValueError:
+                        qty = 1
+            elif "each" in per_part:
+                unit = "each"
+                qty = 1
+            # If unit info was in price but couldn't parse, leave unit as-is
+
         elif "each" in price.lower():
             parts = price.lower().split("each", 1)
             price = parts[0].replace('$', '').strip()
+            unit = "each"
+            qty = 1
         else:
             price = price.replace('$', '').strip()
-    
-    # Parse unit and quantity
-    qty = 1
-    if "each" in unit.lower():
-        qty = 1
-    elif "pack" in unit.lower() and "of" in unit.lower():
-        parts = unit.split(" of ", 1)
-        unit = parts[0].strip()
-        try:
-            qty = int(parts[1].strip())
-        except ValueError:
+
+    # Only parse unit parameter if it wasn't already extracted from price
+    if "Not Found" not in unit and unit not in ["pack", "each"]:
+        if "each" in unit.lower():
+            unit = "each"
             qty = 1
-    
+        elif "pack" in unit.lower() and "of" in unit.lower():
+            parts = unit.split(" of ", 1)
+            unit = "pack"
+            try:
+                qty = int(parts[1].strip())
+            except ValueError:
+                qty = 1
+
     return price, unit, qty
 
 def cleanup_festo_data(price, unit, qty_raw):
@@ -448,15 +521,15 @@ def update_price_history(entry_data, current_data):
     """Update price history in CSV format"""
     if current_data[14] is None:
         current_data[14] = ""
-    
+
     if current_data[14] != "":
-        entry_data[14] = current_data[14] + f", Date: {current_data[11]} Price: {current_data[9]}"
+        entry_data[14] = current_data[14] + f", Date: {current_data[10]} Price: {current_data[9]}"
     else:
-        entry_data[14] = f"Date: {current_data[11]} Price: {current_data[9]}"
-    
+        entry_data[14] = f"Date: {current_data[10]} Price: {current_data[9]}"
+
     entry_data[12] = current_data[9]  # Last updated price
-    entry_data[13] = current_data[11]  # Last updated date
-    
+    entry_data[13] = current_data[10]  # Last updated date
+
     return entry_data
 
 #
@@ -479,7 +552,20 @@ def process_excel(file_path, search_string):
                 search_str = str(search_string).strip()
                 if cell_str == search_str:
                     row_index = row[0].row
-                    current_data = [sanitize_string(cell.value) for cell in row[:15]]
+                    current_data = []
+
+                    # Read and format each cell value
+                    for idx, cell in enumerate(row[:15]):
+                        value = cell.value
+
+                        # Format dates (fields 10, 13: Date, Last Updated Date)
+                        if idx in [10, 13]:
+                            value = format_date_value(value)
+                        else:
+                            value = sanitize_string(value)
+
+                        current_data.append(value)
+
                     logger.info(f"Found match at row {row_index}")
                     return current_data, row_index
 
@@ -500,7 +586,17 @@ def save_to_excel(file_path, row_index, data):
         sheet = workbook["Purchase Parts"]
 
         for idx, value in enumerate(data):
-            sheet.cell(row=row_index, column=idx + 1, value=value)
+            # Format the value based on field type
+            formatted_value = value
+
+            # Format prices (fields 9, 12: Unit Price, Last Updated Price)
+            if idx in [9, 12]:
+                formatted_value = format_price_value(value)
+            # Format dates (fields 10, 13: Date, Last Updated Date)
+            elif idx in [10, 13]:
+                formatted_value = format_date_value(value)
+
+            sheet.cell(row=row_index, column=idx + 1, value=formatted_value)
 
         workbook.save(filename=file_path)
         logger.info("Excel file saved successfully")
@@ -528,7 +624,7 @@ def add_new_row_to_excel(file_path, aci_number, vendor, vendor_part_number):
         new_data[0] = aci_number  # ACI #
         new_data[6] = vendor  # Vendor
         new_data[7] = vendor_part_number  # Vendor Part #
-        new_data[11] = datetime.now().strftime("%m/%d/%Y")  # Date
+        new_data[10] = datetime.now().strftime("%m/%d/%Y")  # Date
 
         # Copy formatting from last row and write values
         from copy import copy
@@ -910,16 +1006,23 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
                     else:
                         entry_data[i] = text_boxes[i].get()
 
-            # Calculate price change
+            # Calculate price change and update date
             percent_change = 0
             if current_data[9] not in ['Legacy', 'None', None] and entry_data[9] not in ['Legacy', 'None', None]:
                 try:
                     percent_change = calculate_percentage_change(current_data[9], entry_data[9])
 
+                    # Update entry_data with calculated values
+                    entry_data[10] = datetime.now().strftime("%m/%d/%Y")  # Date
+                    entry_data[11] = percent_change  # Change %
+
                     if percent_change and abs(percent_change) >= 1:
                         update_price_history(entry_data, current_data)
                 except ValueError as e:
                     logger.error(f"Price conversion error: {e}")
+            else:
+                # Even if we can't calculate percentage change, update the date
+                entry_data[10] = datetime.now().strftime("%m/%d/%Y")
 
             # Alert on significant price changes
             if percent_change and abs(percent_change) >= 20:
@@ -1076,8 +1179,8 @@ def process_item(vendor_name, part_number, current_data, entry_data):
     entry_data[4] = parsed_data['qty']
     entry_data[5] = parsed_data['unit']
     entry_data[9] = parsed_data['price']
-    entry_data[10] = calculate_percentage_change(current_data[9], parsed_data['price'])
-    entry_data[11] = datetime.now().strftime("%m/%d/%Y")
+    entry_data[10] = datetime.now().strftime("%m/%d/%Y")  # Date
+    entry_data[11] = calculate_percentage_change(current_data[9], parsed_data['price'])  # Change %
 
     logger.info(f"Data parsed successfully: Price=${parsed_data['price']}, Qty={parsed_data['qty']}")
     return tab_id
@@ -1179,30 +1282,20 @@ def batch_update_dialog():
 
     return result['aci_list']
 
-def validate_batch_match(current_data, scraped_data):
+def validate_batch_match(current_data, scraped_data, vendor_name):
     """Validate if scraped data matches current data for batch update"""
-    # Check description match (fuzzy)
-    current_desc = str(current_data[3]).strip().lower() if current_data[3] else ""
-    scraped_desc = str(scraped_data.get('description', '')).strip().lower()
+    vendor_key = vendor_name.lower().strip()
 
-    if not scraped_desc or scraped_desc == "not found":
-        return False, "Description not found"
+    # Check part number match (skip for McMaster as their part numbers may differ from MFR)
+    if vendor_key not in ['mcmaster', 'mcmaster-carr']:
+        current_part = str(current_data[1]).strip() if current_data[1] else ""
+        scraped_part = str(scraped_data.get('mfr_number', '')).strip()
 
-    # Simple fuzzy match - check if descriptions are similar
-    desc_match = current_desc in scraped_desc or scraped_desc in current_desc or current_desc == scraped_desc
+        # Allow some flexibility in part number matching
+        part_match = current_part.lower() == scraped_part.lower() if current_part and scraped_part != "Not Found" else True
 
-    if not desc_match:
-        return False, "Description mismatch"
-
-    # Check part number match
-    current_part = str(current_data[1]).strip() if current_data[1] else ""
-    scraped_part = str(scraped_data.get('mfr_number', '')).strip()
-
-    # Allow some flexibility in part number matching
-    part_match = current_part.lower() == scraped_part.lower() if current_part and scraped_part != "Not Found" else True
-
-    if current_part and scraped_part != "Not Found" and not part_match:
-        return False, "Part number mismatch"
+        if current_part and scraped_part != "Not Found" and not part_match:
+            return False, "Part number mismatch"
 
     # Check unit match
     current_unit = str(current_data[5]).strip().lower() if current_data[5] else ""
@@ -1282,7 +1375,7 @@ def batch_update_worker(file_path, aci_list):
                 continue
 
             # Validate match
-            is_match, match_reason = validate_batch_match(current_data, parsed_data)
+            is_match, match_reason = validate_batch_match(current_data, parsed_data, vendor_name)
 
             if not is_match:
                 results['skipped'].append((aci, match_reason))
@@ -1313,8 +1406,8 @@ def batch_update_worker(file_path, aci_list):
 
             # Update entry_data
             entry_data[9] = new_price
-            entry_data[10] = percent_change
-            entry_data[11] = datetime.now().strftime("%m/%d/%Y")
+            entry_data[10] = datetime.now().strftime("%m/%d/%Y")  # Date
+            entry_data[11] = percent_change  # Change %
 
             if percent_change and abs(percent_change) >= 1:
                 update_price_history(entry_data, current_data)

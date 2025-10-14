@@ -84,8 +84,9 @@
           return;
       }
 
-      if (data && data.price !== "Not Found") {
+      if (data) {
         data.vendor = vendor;
+        console.log('Scraped data:', data);
         sendToServer(data);
       }
     } catch (error) {
@@ -107,7 +108,7 @@
   function extractPartNumber() {
     const path = window.location.pathname;
     const match = path.match(/\/(?:product|i|a)\/([^\/\?]+)/);
-    return match ? match[1] : "Unknown";
+    return match ? match[1] : "";
   }
 
   // GRAINGER SCRAPER
@@ -173,7 +174,7 @@
 
     // Try multiple price selectors
     let price = "Not Found";
-    const priceSelectors = ['PrceTxt', 'Price_price', 'PrceTierPrceCol', 'Prce'];
+    const priceSelectors = ['PrceTxt', 'Price_price', 'PrceTierPrceCol', 'Prce', '_price_'];
     for (const sel of priceSelectors) {
       const elem = document.querySelector(`[class*="${sel}"]`);
       if (elem) {
