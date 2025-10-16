@@ -34,7 +34,7 @@
         extractionAttempted = true;
         extractAndSend(vendor);
       }
-    }, 2000);
+    }, 3000);
   }
 
   async function registerTab() {

@@ -11,7 +11,7 @@ import subprocess
 import tkinter as tk
 from tkinter import simpledialog, messagebox, scrolledtext
 import tkinter.font as tkFont
-from datetime import datetime
+from datetime import datetime, date
 from openpyxl import load_workbook
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -63,6 +63,27 @@ def cleanup_stale_tabs(max_age_seconds=1800):
         REGISTERED_TABS.pop(tab_id, None)
         TABS_TO_CLOSE.discard(tab_id)
         logger.info(f"Cleaned up stale tab {tab_id}")
+
+def clear_stale_data():
+    """Clear stale data before new scraping operation"""
+    # Clear data queue
+    while not DATA_QUEUE.empty():
+        try:
+            DATA_QUEUE.get_nowait()
+        except queue.Empty:
+            break
+
+    # Clear tabs to close
+    TABS_TO_CLOSE.clear()
+
+    # Remove old registered tabs (older than 5 seconds)
+    current_time = time.time()
+    stale_tabs = [tab_id for tab_id, info in REGISTERED_TABS.items()
+                  if current_time - info['timestamp'] > 5]
+    for tab_id in stale_tabs:
+        REGISTERED_TABS.pop(tab_id, None)
+
+    logger.info("Cleared stale data and old tab registrations")
 
 def create_flask_app():
     app = Flask(__name__)
@@ -286,12 +307,12 @@ def sanitize_string(value):
     return value
 
 def format_date_value(value):
-    """Format date value to MM/DD/YYYY string, handling datetime objects"""
+    """Format date value to MM/DD/YYYY string, handling date and datetime objects"""
     if value is None or value == '':
         return None
 
-    # Check if it's a datetime object first (from Excel or Python)
-    if isinstance(value, datetime):
+    # Check if it's a date or datetime object (from Excel or Python)
+    if isinstance(value, date):  # This covers both date and datetime
         return value.strftime("%m/%d/%Y")
 
     # If it's already a string, try to parse and reformat it
@@ -338,15 +359,19 @@ def format_price_value(value):
         return None
 
 def prepare_date_for_excel(value):
-    """Prepare date value for Excel - returns datetime object or None"""
+    """Prepare date value for Excel - returns date object (no time) or None"""
     if value is None or value == '' or value == 'Not Found':
         return None
 
-    # If it's already a datetime object, return as-is
-    if isinstance(value, datetime):
+    # If it's already a date object, return as-is
+    if isinstance(value, date) and not isinstance(value, datetime):
         return value
 
-    # If it's a string, parse it to datetime
+    # If it's a datetime object, strip time component
+    if isinstance(value, datetime):
+        return value.date()
+
+    # If it's a string, parse it to date
     if isinstance(value, str):
         # Skip invalid values
         if value.strip() in ['', 'Not Found', 'None']:
@@ -355,7 +380,7 @@ def prepare_date_for_excel(value):
         # Try to parse common date formats
         for fmt in ['%m/%d/%Y', '%Y-%m-%d', '%m/%d/%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S']:
             try:
-                return datetime.strptime(value.strip(), fmt)
+                return datetime.strptime(value.strip(), fmt).date()
             except ValueError:
                 continue
 
@@ -762,7 +787,7 @@ def get_new_aci_details(aci_number):
     tk.Label(root, text="Vendor:", font=("Arial", 10)).pack(pady=(10, 2), padx=20)
     vendor_var = tk.StringVar(root)
     vendor_options = ['Grainger', 'McMaster-Carr', 'Festo', 'Zoro', 'Other']
-    vendor_var.set(vendor_options[0])
+    vendor_var.set('Other')
     vendor_menu = tk.OptionMenu(root, vendor_var, *vendor_options)
     vendor_menu.config(font=("Arial", 10), width=20)
     vendor_menu.pack(pady=2, padx=20)
@@ -1015,7 +1040,7 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
             text_box.insert(tk.END, entry_text)
 
-            current_text_box = tk.Text(root, font=large_font, height=7, width=30, wrap="word", state="normal", takefocus=0)
+            current_text_box = tk.Text(root, font=large_font, height=7, width=40, wrap="word", state="normal", takefocus=0)
             current_text_box.grid(row=i + 1, column=2, padx=50, pady=5)
             current_text = "" if current_data[i] is None else str(current_data[i])
             current_text_box.insert(tk.END, current_text)
@@ -1029,7 +1054,7 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
             text_box.insert(0, entry_text)
 
-            current_text_box = tk.Entry(root, font=large_font, state='normal', width=30, takefocus=0)
+            current_text_box = tk.Entry(root, font=large_font, state='normal', width=40, takefocus=0)
             current_text_box.grid(row=i + 1, column=2, padx=50, pady=5)
             current_text = "" if current_data[i] is None else str(current_data[i])
             current_text_box.insert(0, current_text)
@@ -1213,6 +1238,9 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
 def process_item(vendor_name, part_number, current_data, entry_data):
     """Orchestrate the scraping workflow"""
     logger.info(f"Processing {vendor_name} part {part_number}")
+
+    # Clear any stale data before opening new browser tab
+    clear_stale_data()
 
     # Open browser
     if not BrowserController.open_vendor_page(vendor_name, part_number):
@@ -1412,6 +1440,9 @@ def batch_update_worker(file_path, aci_list):
             # Scrape data
             part_number = current_data[7]
             entry_data = current_data.copy()
+
+            # Clear stale data before each scrape
+            clear_stale_data()
 
             logger.info(f"  Opening {vendor_name} page for {part_number}")
             if not BrowserController.open_vendor_page(vendor_name, part_number):
