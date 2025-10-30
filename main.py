@@ -800,6 +800,23 @@ def save_to_excel(file_path, row_index, data):
         if workbook:
             workbook.close()
 
+def remove_row_from_excel(file_path, row_index):
+    """Remove a row from Excel when a new ACI entry is cancelled"""
+    workbook = None
+    try:
+        workbook = load_workbook(file_path, read_only=False, keep_vba=True)
+        sheet = workbook["Purchase Parts"]
+        sheet.delete_rows(row_index, 1)
+        workbook.save(filename=file_path)
+        logger.info(f"Removed row {row_index} from Excel after cancellation")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to remove row {row_index} from Excel: {e}")
+        return False
+    finally:
+        if workbook:
+            workbook.close()
+
 def add_new_row_to_excel(file_path, aci_number, vendor, vendor_part_number):
     """Add a new row to Excel with basic information, copying formatting from last row"""
     workbook = None
@@ -1135,7 +1152,7 @@ def switch_checkbox_state(index, checkboxes, text_boxes, current_text_boxes, fie
             text_boxes[index].insert(0, str(entry_data[index]) if entry_data[index] is not None else "")
             compare_and_highlight(text_boxes[index], current_data[index], entry_data[index])
 
-def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=None):
+def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=None, is_new_entry=False):
     """Display GUI form for user confirmation"""
     global _APP_ICON_PHOTO
     root = tk.Tk()
@@ -1244,6 +1261,19 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
         text_boxes[2].insert(0, "Unknown")
         compare_and_highlight(text_boxes[2], current_data[2], "Unknown")
 
+    def toggle_keep_description():
+        """Toggle 'Use current' for Description field (Ctrl+D)"""
+        # Description is at index 3 in the fields list
+        desc_idx = 3
+        if desc_idx < len(checkboxes):
+            var = checkboxes[desc_idx].var
+            var.set(not var.get())
+            # Trigger the visual update by calling the checkbox command
+            switch_checkbox_state(
+                desc_idx, checkboxes, text_boxes, current_text_boxes, fields, entry_data, current_data
+            )
+        return "break"  # Prevent default Ctrl+D behavior
+
     def submit():
         try:
             # Update entry_data based on checkboxes
@@ -1261,6 +1291,12 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
                         entry_data[i] = text_boxes[i].get("1.0", tk.END).strip()
                     else:
                         entry_data[i] = text_boxes[i].get()
+
+            # Ensure Unit Price is provided
+            price_input = entry_data[9]
+            if price_input is None or str(price_input).strip() == "" or str(price_input).strip().lower() in ["not found", "none"]:
+                messagebox.showwarning("Missing Price", "Please enter a Unit Price before submitting.")
+                return
 
             # Calculate price change and update date
             percent_change = 0
@@ -1315,6 +1351,13 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
         if tab_id:
             TABS_TO_CLOSE.add(tab_id)
             logger.info(f"Added tab {tab_id} to close queue")
+
+        if is_new_entry and row_index is not None:
+            if remove_row_from_excel(file_path, row_index):
+                logger.info(f"Removed temporary row {row_index} after cancellation")
+            else:
+                logger.warning(f"Failed to remove temporary row {row_index} after cancellation")
+
         root.quit()
         root.destroy()
 
@@ -1375,6 +1418,8 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
     root.bind('<Control-S>', lambda e: submit())
     root.bind('<Control-x>', lambda e: cancel())
     root.bind('<Control-X>', lambda e: cancel())
+    root.bind('<Control-d>', lambda e: toggle_keep_description())
+    root.bind('<Control-D>', lambda e: toggle_keep_description())
     root.bind('<Control-Key-2>', lambda e: fill_unknown_mfr_part())
     root.bind('<Control-Key-3>', lambda e: fill_unknown_mfr())
 
@@ -1599,17 +1644,17 @@ def batch_update_worker(file_path, aci_list):
                 logger.error(f"  Error loading ACI {aci}")
                 continue
 
+            # Skip any ACI numbers that contain a hyphen
+            if '-' in aci:
+                results['skipped'].append((aci, "ACI contains hyphen - manual update required"))
+                logger.info(f"  Skipped {aci} - hyphenated ACI")
+                continue
+
             # Check if vendor is auto-supported
             vendor_name = current_data[6]
             if not is_vendor_auto(vendor_name):
                 results['skipped'].append((aci, f"Manual vendor: {vendor_name}"))
                 logger.info(f"  Skipped {aci} - manual vendor")
-                continue
-            #Skip McMaster ACI numbers with hyphens in batch update
-            vendor_key=vendor_name.lower().strip()
-            if vendor_key in ['mcmaster', 'mcmaster-carr'] and '-' in aci:
-                results['skipped'].append((aci, "McMaster ACI with hyphen - manual update required"))
-                logger.info(f"  Skipped {aci} - McMaster ACI with hyphen")
                 continue
 
             # Scrape data
@@ -1881,7 +1926,7 @@ def main_loop(file_path):
                         logger.info(f"Manual vendor for new entry: {vendor}")
 
                     # Show user form
-                    user_form(current_data, entry_data, FIELDS, file_path, row_index, tab_id)
+                    user_form(current_data, entry_data, FIELDS, file_path, row_index, tab_id, is_new_entry=True)
                 else:
                     logger.info("User declined to add new ACI")
                 continue
