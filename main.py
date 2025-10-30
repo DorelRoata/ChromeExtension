@@ -20,6 +20,120 @@ from flask_cors import CORS
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Memory Management
+def set_window_icon_safe(window, icon_ico_path=None, icon_png_path=None):
+    """Set window icon with proper cleanup to prevent memory leaks"""
+    try:
+        # Try ICO first (Windows native format)
+        if icon_ico_path and os.path.exists(icon_ico_path):
+            window.iconbitmap(icon_ico_path)
+            return
+        
+        # Fallback to PNG - store reference on window to prevent garbage collection
+        if icon_png_path and os.path.exists(icon_png_path):
+            icon = tk.PhotoImage(file=icon_png_path)
+            window.iconphoto(True, icon)
+            # Store reference on window itself, not global
+            window._icon_ref = icon
+    except Exception as e:
+        logger.warning(f"Could not set window icon: {e}")
+
+# Error Handling
+def handle_error(exception, context="", show_user=True, parent_window=None, log_level="error"):
+    """Centralized error handling with user-friendly messages"""
+    
+    # Generate user-friendly message based on exception type
+    if isinstance(exception, FileNotFoundError):
+        user_msg = f"File not found: {context}\n\nCheck if the file exists and you have permission to access it."
+    elif isinstance(exception, PermissionError):
+        user_msg = f"Access denied: {context}\n\nPlease close the file in Excel and try again."
+    elif isinstance(exception, TimeoutError):
+        user_msg = f"Operation timed out: {context}\n\nTry again or check your internet connection."
+    elif "Excel" in str(exception) or "openpyxl" in str(exception):
+        user_msg = f"Excel error: {context}\n\nMake sure the Excel file is not open and try again."
+    elif isinstance(exception, ValueError):
+        user_msg = f"Invalid data: {context}\n\nCheck your input and try again."
+    else:
+        user_msg = f"Error: {context}\n\n{str(exception)}"
+    
+    # Log technical error
+    if log_level == "error":
+        logger.error(f"{context}: {exception}", exc_info=True)
+    elif log_level == "warning":
+        logger.warning(f"{context}: {exception}")
+    else:
+        logger.info(f"{context}: {exception}")
+    
+    # Show user message if requested
+    if show_user and parent_window:
+        messagebox.showerror("Error", user_msg)
+    elif show_user:
+        messagebox.showerror("Error", user_msg)
+    
+    return user_msg
+
+# Window Position Management
+import json
+
+CONFIG_FILE = "window_config.json"
+
+def load_window_positions():
+    """Load saved window positions from JSON file"""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load window positions: {e}")
+    return {}
+
+def save_window_positions(positions):
+    """Save window positions to JSON file"""
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(positions, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Failed to save window positions: {e}")
+
+def setup_window_position(window, window_name, default_size=(400, 200)):
+    """Setup window with saved position and save on close"""
+    positions = load_window_positions()
+    
+    if window_name in positions:
+        pos = positions[window_name]
+        geometry = f"{pos.get('width', default_size[0])}x{pos.get('height', default_size[1])}+{pos.get('x', 100)}+{pos.get('y', 100)}"
+    else:
+        # Center on screen
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+        width, height = default_size
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        geometry = f"{width}x{height}+{x}+{y}"
+    
+    window.geometry(geometry)
+    
+    # Save position on close
+    def on_close():
+        try:
+            geometry = window.geometry()
+            parts = geometry.split('+')
+            size_part = parts[0]
+            if len(parts) > 2:
+                x, y = int(parts[1]), int(parts[2])
+            else:
+                x, y = 0, 0
+            width, height = map(int, size_part.split('x'))
+            
+            positions = load_window_positions()
+            positions[window_name] = {'x': x, 'y': y, 'width': width, 'height': height}
+            save_window_positions(positions)
+        except Exception as e:
+            logger.warning(f"Failed to save window position: {e}")
+        window.destroy()
+    
+    window.protocol("WM_DELETE_WINDOW", on_close)
+
 # Global configuration
 SERVER_PORT = 5000
 DATA_QUEUE = queue.Queue(maxsize=50)  # Limit queue size to prevent unbounded growth
@@ -796,7 +910,7 @@ def get_new_aci_details(aci_number):
     tk.Label(root, text="Vendor Part Number:", font=("Arial", 10)).pack(pady=(10, 2), padx=20)
     part_entry = tk.Entry(root, font=("Arial", 10), width=25)
     part_entry.pack(pady=2, padx=20)
-
+    add_entry_context_menu(part_entry)
     result = {'vendor': None, 'part_number': None}
 
     def on_submit():
@@ -852,8 +966,44 @@ def get_new_aci_details(aci_number):
 #
 # GUI COMPONENTS
 #
-# Global variable to cache PhotoImage to prevent memory leaks
-_APP_ICON_PHOTO = None
+def add_entry_context_menu(entry_widget):
+    """add right-click context menu to Entry widget with Cut/Copy/Paste"""
+    menu = tk.Menu(entry_widget, tearoff=0)
+
+    def cut():
+        try: 
+            entry_widget.event_generate("<<Cut>>")
+        except:
+            pass
+    def copy():
+        try: 
+            entry_widget.event_generate("<<Copy>>")
+        except:
+            pass
+    def paste():
+        try:
+            entry_widget.event_generate("<<Paste>>")
+        except:
+            pass
+    def select_all():
+        try:
+            entry_widget.select_range(0, tk.END)
+            entry_widget.icursor(tk.END)
+        except:
+            pass
+
+    menu.add_command(label="Cut", command=cut, accelerator="Ctrl+X")
+    menu.add_command(label="Copy", command=copy, accelerator="Ctrl+C")
+    menu.add_command(label="Paste", command=paste, accelerator="Ctrl+V")
+    menu.add_separator()
+    menu.add_command(label="Select All", command=select_all, accelerator="Ctrl+A")
+
+    def show_menu(event):
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+    entry_widget.bind("<Button-3>", show_menu) #Right-click
 
 def get_search_string():
     """Prompt user for ACI number or batch update"""
@@ -893,7 +1043,8 @@ def get_search_string():
     # Entry field
     entry = tk.Entry(root, font=("Arial", 10), width=25)
     entry.pack(pady=8, padx=20)
-
+    add_entry_context_menu(entry)
+    
     result = {'value': None, 'mode': 'single'}
 
     def on_submit():
@@ -1039,6 +1190,7 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
             text_box.grid(row=i + 1, column=1, padx=5, pady=5)
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
             text_box.insert(tk.END, entry_text)
+            add_entry_context_menu(text_box)
 
             current_text_box = tk.Text(root, font=large_font, height=7, width=40, wrap="word", state="normal", takefocus=0)
             current_text_box.grid(row=i + 1, column=2, padx=50, pady=5)
@@ -1053,6 +1205,7 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
             text_box.grid(row=i + 1, column=1, padx=5, pady=5)
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
             text_box.insert(0, entry_text)
+            add_entry_context_menu(text_box)
 
             current_text_box = tk.Entry(root, font=large_font, state='normal', width=40, takefocus=0)
             current_text_box.grid(row=i + 1, column=2, padx=50, pady=5)
@@ -1077,6 +1230,19 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
         ))
         checkbox.grid(row=i + 1, column=3, padx=(2, 10), pady=2, sticky="w")
         checkboxes.append(checkbox)
+
+    # Keyboard shortcuts for filling "Unknown"
+    def fill_unknown_mfr_part():
+        """Fill MFR Part # field with 'Unknown' (Ctrl+2)"""
+        text_boxes[1].delete(0, tk.END)
+        text_boxes[1].insert(0, "Unknown")
+        compare_and_highlight(text_boxes[1], current_data[1], "Unknown")
+
+    def fill_unknown_mfr():
+        """Fill MFR field with 'Unknown' (Ctrl+3)"""
+        text_boxes[2].delete(0, tk.END)
+        text_boxes[2].insert(0, "Unknown")
+        compare_and_highlight(text_boxes[2], current_data[2], "Unknown")
 
     def submit():
         try:
@@ -1209,6 +1375,8 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
     root.bind('<Control-S>', lambda e: submit())
     root.bind('<Control-x>', lambda e: cancel())
     root.bind('<Control-X>', lambda e: cancel())
+    root.bind('<Control-Key-2>', lambda e: fill_unknown_mfr_part())
+    root.bind('<Control-Key-3>', lambda e: fill_unknown_mfr())
 
     root.protocol("WM_DELETE_WINDOW", cancel)
     root.transient()
@@ -1316,7 +1484,8 @@ def batch_update_dialog():
     # Text area
     text_area = scrolledtext.ScrolledText(root, font=("Arial", 10), width=50, height=15)
     text_area.pack(pady=10, padx=20)
-
+    add_entry_context_menu(text_area)
+    
     result = {'aci_list': None}
 
     def on_submit():
@@ -1435,6 +1604,12 @@ def batch_update_worker(file_path, aci_list):
             if not is_vendor_auto(vendor_name):
                 results['skipped'].append((aci, f"Manual vendor: {vendor_name}"))
                 logger.info(f"  Skipped {aci} - manual vendor")
+                continue
+            #Skip McMaster ACI numbers with hyphens in batch update
+            vendor_key=vendor_name.lower().strip()
+            if vendor_key in ['mcmaster', 'mcmaster-carr'] and '-' in aci:
+                results['skipped'].append((aci, "McMaster ACI with hyphen - manual update required"))
+                logger.info(f"  Skipped {aci} - McMaster ACI with hyphen")
                 continue
 
             # Scrape data

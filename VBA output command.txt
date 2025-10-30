@@ -1,0 +1,126 @@
+Sub BatchUpdatePrices()
+    ' ========================================
+    ' Batch Update Prices from Selected ACIs
+    ' ========================================
+    ' This macro collects selected ACI numbers from Column A
+    ' and sends them to PriceScraper.exe for batch updating
+
+    Dim aciList As String
+    Dim exePath As String
+    Dim cell As Range
+    Dim aciArray() As String
+    Dim aciCount As Integer
+    Dim i As Integer
+    Dim dict As Object
+
+    ' Check if anything is selected
+    If Selection Is Nothing Then
+        MsgBox "Please select one or more cells in Column A containing ACI numbers.", vbExclamation, "No Selection"
+        Exit Sub
+    End If
+
+    ' Check if selection is in Column A
+    For Each cell In Selection
+        If cell.Column <> 1 Then
+            MsgBox "Please select only cells from Column A (ACI numbers)." & vbCrLf & vbCrLf & _
+                   "Found selection in column " & Split(Cells(1, cell.Column).Address, "$")(1), _
+                   vbExclamation, "Invalid Selection"
+            Exit Sub
+        End If
+    Next cell
+
+    ' Create dictionary to remove duplicates
+    Set dict = CreateObject("Scripting.Dictionary")
+
+    ' Collect unique, non-empty ACI numbers
+    aciCount = 0
+    For Each cell In Selection
+        If Not IsEmpty(cell.Value) And Trim(cell.Value) <> "" Then
+            Dim aciValue As String
+            aciValue = Trim(CStr(cell.Value))
+
+            ' Add to dictionary (automatically handles duplicates)
+            If Not dict.Exists(aciValue) Then
+                dict.Add aciValue, True
+                aciCount = aciCount + 1
+            End If
+        End If
+    Next cell
+
+    ' Check if any valid ACIs were found
+    If aciCount = 0 Then
+        MsgBox "No valid ACI numbers found in selection." & vbCrLf & vbCrLf & _
+               "Please select cells containing ACI numbers.", _
+               vbExclamation, "No Data"
+        Exit Sub
+    End If
+
+    ' Convert dictionary keys to comma-separated list
+    ReDim aciArray(0 To dict.Count - 1)
+    i = 0
+    For Each Key In dict.Keys
+        aciArray(i) = Key
+        i = i + 1
+    Next
+    aciList = Join(aciArray, ",")
+
+    ' Set the path to PriceScraper.exe
+    ' OPTION 1: Hardcoded path (update this to your installation path)
+    exePath = "C:\ACI_MML_AUTO\AdvantageScraper.exe"
+
+    ' OPTION 2: Use path from same directory as this Excel file
+    ' exePath = ThisWorkbook.Path & "\PriceScraper.exe"
+
+    ' OPTION 3: Use network path
+    ' exePath = "Z:\Path\To\PriceScraper.exe"
+
+    ' Verify the executable exists
+    If Dir(exePath) = "" Then
+        MsgBox "PriceScraper.exe not found at:" & vbCrLf & vbCrLf & _
+               exePath & vbCrLf & vbCrLf & _
+               "Please update the exePath in the VBA code.", _
+               vbCritical, "File Not Found"
+        Exit Sub
+    End If
+
+    ' Confirm with user
+    Dim confirmMsg As String
+    If aciCount = 1 Then
+        confirmMsg = "Update pricing for 1 ACI number?" & vbCrLf & vbCrLf & _
+                     "ACI: " & aciList
+    Else
+        confirmMsg = "Update pricing for " & aciCount & " ACI numbers?" & vbCrLf & vbCrLf & _
+                     "First few: " & Left(aciList, 100)
+        If Len(aciList) > 100 Then
+            confirmMsg = confirmMsg & "..."
+        End If
+    End If
+
+    Dim response As VbMsgBoxResult
+    response = MsgBox(confirmMsg, vbQuestion + vbYesNo, "Confirm Batch Update")
+
+    If response = vbNo Then
+        Exit Sub
+    End If
+
+    ' Build the command
+    Dim cmd As String
+    cmd = """" & exePath & """ --batch """ & aciList & """"
+
+    ' Execute the batch update
+    On Error GoTo ErrorHandler
+    Shell cmd, vbNormalFocus
+
+    ' Success message
+    MsgBox "Batch update initiated for " & aciCount & " ACI number(s)." & vbCrLf & vbCrLf & _
+           "The PriceScraper application will open and process each item automatically.", _
+           vbInformation, "Batch Update Started"
+
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error launching PriceScraper:" & vbCrLf & vbCrLf & _
+           Err.Description & vbCrLf & vbCrLf & _
+           "Command: " & cmd, _
+           vbCritical, "Launch Error"
+End Sub

@@ -13,7 +13,7 @@ def build_exe():
     
     PyInstaller.__main__.run([
         'main.py',
-        '--name=PriceScraper',
+        '--name=AdvantageScraper',
         '--onefile',
         '--windowed',
         '--icon=icon.ico',
@@ -32,10 +32,10 @@ def build_exe():
         '--collect-all=flask_cors',
         '--noconfirm'
     ])
-    
+
     print("\n" + "="*50)
     print("Build complete!")
-    print(f"Executable location: {os.path.abspath('dist/PriceScraper.exe')}")
+    print(f"Executable location: {os.path.abspath('dist/AdvantageScraper.exe')}")
     print("="*50)
 
 if __name__ == "__main__":
