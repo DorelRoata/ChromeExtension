@@ -28,7 +28,7 @@ def set_window_icon_safe(window, icon_ico_path=None, icon_png_path=None):
         if icon_ico_path and os.path.exists(icon_ico_path):
             window.iconbitmap(icon_ico_path)
             return
-        
+
         # Fallback to PNG - store reference on window to prevent garbage collection
         if icon_png_path and os.path.exists(icon_png_path):
             icon = tk.PhotoImage(file=icon_png_path)
@@ -41,7 +41,6 @@ def set_window_icon_safe(window, icon_ico_path=None, icon_png_path=None):
 # Error Handling
 def handle_error(exception, context="", show_user=True, parent_window=None, log_level="error"):
     """Centralized error handling with user-friendly messages"""
-    
     # Generate user-friendly message based on exception type
     if isinstance(exception, FileNotFoundError):
         user_msg = f"File not found: {context}\n\nCheck if the file exists and you have permission to access it."
@@ -55,7 +54,7 @@ def handle_error(exception, context="", show_user=True, parent_window=None, log_
         user_msg = f"Invalid data: {context}\n\nCheck your input and try again."
     else:
         user_msg = f"Error: {context}\n\n{str(exception)}"
-    
+
     # Log technical error
     if log_level == "error":
         logger.error(f"{context}: {exception}", exc_info=True)
@@ -63,76 +62,16 @@ def handle_error(exception, context="", show_user=True, parent_window=None, log_
         logger.warning(f"{context}: {exception}")
     else:
         logger.info(f"{context}: {exception}")
-    
-    # Show user message if requested
-    if show_user and parent_window:
-        messagebox.showerror("Error", user_msg)
-    elif show_user:
-        messagebox.showerror("Error", user_msg)
-    
-    return user_msg
 
-# Window Position Management
-import json
-
-CONFIG_FILE = "window_config.json"
-
-def load_window_positions():
-    """Load saved window positions from JSON file"""
-    if os.path.exists(CONFIG_FILE):
+    # Show user-friendly message
+    if show_user:
         try:
-            with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.warning(f"Failed to load window positions: {e}")
-    return {}
-
-def save_window_positions(positions):
-    """Save window positions to JSON file"""
-    try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(positions, f, indent=2)
-    except Exception as e:
-        logger.warning(f"Failed to save window positions: {e}")
-
-def setup_window_position(window, window_name, default_size=(400, 200)):
-    """Setup window with saved position and save on close"""
-    positions = load_window_positions()
-    
-    if window_name in positions:
-        pos = positions[window_name]
-        geometry = f"{pos.get('width', default_size[0])}x{pos.get('height', default_size[1])}+{pos.get('x', 100)}+{pos.get('y', 100)}"
-    else:
-        # Center on screen
-        screen_width = window.winfo_screenwidth()
-        screen_height = window.winfo_screenheight()
-        width, height = default_size
-        x = (screen_width - width) // 2
-        y = (screen_height - height) // 2
-        geometry = f"{width}x{height}+{x}+{y}"
-    
-    window.geometry(geometry)
-    
-    # Save position on close
-    def on_close():
-        try:
-            geometry = window.geometry()
-            parts = geometry.split('+')
-            size_part = parts[0]
-            if len(parts) > 2:
-                x, y = int(parts[1]), int(parts[2])
+            if parent_window is not None:
+                messagebox.showerror("Error", user_msg, parent=parent_window)
             else:
-                x, y = 0, 0
-            width, height = map(int, size_part.split('x'))
-            
-            positions = load_window_positions()
-            positions[window_name] = {'x': x, 'y': y, 'width': width, 'height': height}
-            save_window_positions(positions)
-        except Exception as e:
-            logger.warning(f"Failed to save window position: {e}")
-        window.destroy()
-    
-    window.protocol("WM_DELETE_WINDOW", on_close)
+                messagebox.showerror("Error", user_msg)
+        except Exception:
+            print(user_msg, file=sys.stderr)
 
 # Global configuration
 SERVER_PORT = 5000
@@ -511,6 +450,30 @@ def clean_value_for_excel(value):
         return None
     return value
 
+def prepare_aci_for_excel(value):
+    """Ensure ACI # is stored as a number in Excel when it is purely numeric.
+
+    - Returns int for digit-only strings (e.g., "12345" -> 12345)
+    - Preserves non-numeric ACI values (e.g., with hyphens/letters)
+    - Normalizes floats that are whole numbers to int (e.g., 123.0 -> 123)
+    """
+    if value is None:
+        return None
+    try:
+        # Already numeric
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value) if value.is_integer() else value
+
+        s = str(value).strip()
+        if s.isdigit():
+            # Convert digit-only strings to int for proper Excel numeric typing
+            return int(s)
+    except Exception:
+        pass
+    return value
+
 def parse_vendor_data(raw_data, vendor_name):
     """Parse raw scraped data into standardized format"""
     if not raw_data:
@@ -773,8 +736,11 @@ def save_to_excel(file_path, row_index, data):
             # Format the value based on field type
             formatted_value = value
 
+            # Ensure ACI # (col 0) is numeric when purely digits
+            if idx == 0:
+                formatted_value = prepare_aci_for_excel(value)
             # Format prices (fields 9, 12: Unit Price, Last Updated Price)
-            if idx in [9, 12]:
+            elif idx in [9, 12]:
                 formatted_value = format_price_value(value)
             # Format dates (fields 10, 13: Date, Last Updated Date)
             elif idx in [10, 13]:
@@ -800,23 +766,6 @@ def save_to_excel(file_path, row_index, data):
         if workbook:
             workbook.close()
 
-def remove_row_from_excel(file_path, row_index):
-    """Remove a row from Excel when a new ACI entry is cancelled"""
-    workbook = None
-    try:
-        workbook = load_workbook(file_path, read_only=False, keep_vba=True)
-        sheet = workbook["Purchase Parts"]
-        sheet.delete_rows(row_index, 1)
-        workbook.save(filename=file_path)
-        logger.info(f"Removed row {row_index} from Excel after cancellation")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to remove row {row_index} from Excel: {e}")
-        return False
-    finally:
-        if workbook:
-            workbook.close()
-
 def add_new_row_to_excel(file_path, aci_number, vendor, vendor_part_number):
     """Add a new row to Excel with basic information, copying formatting from last row"""
     workbook = None
@@ -830,7 +779,7 @@ def add_new_row_to_excel(file_path, aci_number, vendor, vendor_part_number):
 
         # Create new entry with ACI#, Vendor, and Vendor Part# (datetime object, not string)
         new_data = [None] * 15
-        new_data[0] = aci_number  # ACI #
+        new_data[0] = prepare_aci_for_excel(aci_number)  # ACI # (numeric if digits only)
         new_data[6] = vendor  # Vendor
         new_data[7] = vendor_part_number  # Vendor Part #
         new_data[10] = datetime.now()  # Date as datetime object
@@ -927,7 +876,7 @@ def get_new_aci_details(aci_number):
     tk.Label(root, text="Vendor Part Number:", font=("Arial", 10)).pack(pady=(10, 2), padx=20)
     part_entry = tk.Entry(root, font=("Arial", 10), width=25)
     part_entry.pack(pady=2, padx=20)
-    add_entry_context_menu(part_entry)
+
     result = {'vendor': None, 'part_number': None}
 
     def on_submit():
@@ -983,44 +932,8 @@ def get_new_aci_details(aci_number):
 #
 # GUI COMPONENTS
 #
-def add_entry_context_menu(entry_widget):
-    """add right-click context menu to Entry widget with Cut/Copy/Paste"""
-    menu = tk.Menu(entry_widget, tearoff=0)
-
-    def cut():
-        try: 
-            entry_widget.event_generate("<<Cut>>")
-        except:
-            pass
-    def copy():
-        try: 
-            entry_widget.event_generate("<<Copy>>")
-        except:
-            pass
-    def paste():
-        try:
-            entry_widget.event_generate("<<Paste>>")
-        except:
-            pass
-    def select_all():
-        try:
-            entry_widget.select_range(0, tk.END)
-            entry_widget.icursor(tk.END)
-        except:
-            pass
-
-    menu.add_command(label="Cut", command=cut, accelerator="Ctrl+X")
-    menu.add_command(label="Copy", command=copy, accelerator="Ctrl+C")
-    menu.add_command(label="Paste", command=paste, accelerator="Ctrl+V")
-    menu.add_separator()
-    menu.add_command(label="Select All", command=select_all, accelerator="Ctrl+A")
-
-    def show_menu(event):
-        try:
-            menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            menu.grab_release()
-    entry_widget.bind("<Button-3>", show_menu) #Right-click
+# Global variable to cache PhotoImage to prevent memory leaks
+_APP_ICON_PHOTO = None
 
 def get_search_string():
     """Prompt user for ACI number or batch update"""
@@ -1060,8 +973,7 @@ def get_search_string():
     # Entry field
     entry = tk.Entry(root, font=("Arial", 10), width=25)
     entry.pack(pady=8, padx=20)
-    add_entry_context_menu(entry)
-    
+
     result = {'value': None, 'mode': 'single'}
 
     def on_submit():
@@ -1152,7 +1064,7 @@ def switch_checkbox_state(index, checkboxes, text_boxes, current_text_boxes, fie
             text_boxes[index].insert(0, str(entry_data[index]) if entry_data[index] is not None else "")
             compare_and_highlight(text_boxes[index], current_data[index], entry_data[index])
 
-def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=None, is_new_entry=False):
+def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=None):
     """Display GUI form for user confirmation"""
     global _APP_ICON_PHOTO
     root = tk.Tk()
@@ -1207,7 +1119,6 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
             text_box.grid(row=i + 1, column=1, padx=5, pady=5)
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
             text_box.insert(tk.END, entry_text)
-            add_entry_context_menu(text_box)
 
             current_text_box = tk.Text(root, font=large_font, height=7, width=40, wrap="word", state="normal", takefocus=0)
             current_text_box.grid(row=i + 1, column=2, padx=50, pady=5)
@@ -1222,7 +1133,6 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
             text_box.grid(row=i + 1, column=1, padx=5, pady=5)
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
             text_box.insert(0, entry_text)
-            add_entry_context_menu(text_box)
 
             current_text_box = tk.Entry(root, font=large_font, state='normal', width=40, takefocus=0)
             current_text_box.grid(row=i + 1, column=2, padx=50, pady=5)
@@ -1248,32 +1158,6 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
         checkbox.grid(row=i + 1, column=3, padx=(2, 10), pady=2, sticky="w")
         checkboxes.append(checkbox)
 
-    # Keyboard shortcuts for filling "Unknown"
-    def fill_unknown_mfr_part():
-        """Fill MFR Part # field with 'Unknown' (Ctrl+2)"""
-        text_boxes[1].delete(0, tk.END)
-        text_boxes[1].insert(0, "Unknown")
-        compare_and_highlight(text_boxes[1], current_data[1], "Unknown")
-
-    def fill_unknown_mfr():
-        """Fill MFR field with 'Unknown' (Ctrl+3)"""
-        text_boxes[2].delete(0, tk.END)
-        text_boxes[2].insert(0, "Unknown")
-        compare_and_highlight(text_boxes[2], current_data[2], "Unknown")
-
-    def toggle_keep_description():
-        """Toggle 'Use current' for Description field (Ctrl+D)"""
-        # Description is at index 3 in the fields list
-        desc_idx = 3
-        if desc_idx < len(checkboxes):
-            var = checkboxes[desc_idx].var
-            var.set(not var.get())
-            # Trigger the visual update by calling the checkbox command
-            switch_checkbox_state(
-                desc_idx, checkboxes, text_boxes, current_text_boxes, fields, entry_data, current_data
-            )
-        return "break"  # Prevent default Ctrl+D behavior
-
     def submit():
         try:
             # Update entry_data based on checkboxes
@@ -1291,12 +1175,6 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
                         entry_data[i] = text_boxes[i].get("1.0", tk.END).strip()
                     else:
                         entry_data[i] = text_boxes[i].get()
-
-            # Ensure Unit Price is provided
-            price_input = entry_data[9]
-            if price_input is None or str(price_input).strip() == "" or str(price_input).strip().lower() in ["not found", "none"]:
-                messagebox.showwarning("Missing Price", "Please enter a Unit Price before submitting.")
-                return
 
             # Calculate price change and update date
             percent_change = 0
@@ -1351,13 +1229,6 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
         if tab_id:
             TABS_TO_CLOSE.add(tab_id)
             logger.info(f"Added tab {tab_id} to close queue")
-
-        if is_new_entry and row_index is not None:
-            if remove_row_from_excel(file_path, row_index):
-                logger.info(f"Removed temporary row {row_index} after cancellation")
-            else:
-                logger.warning(f"Failed to remove temporary row {row_index} after cancellation")
-
         root.quit()
         root.destroy()
 
@@ -1418,10 +1289,6 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
     root.bind('<Control-S>', lambda e: submit())
     root.bind('<Control-x>', lambda e: cancel())
     root.bind('<Control-X>', lambda e: cancel())
-    root.bind('<Control-d>', lambda e: toggle_keep_description())
-    root.bind('<Control-D>', lambda e: toggle_keep_description())
-    root.bind('<Control-Key-2>', lambda e: fill_unknown_mfr_part())
-    root.bind('<Control-Key-3>', lambda e: fill_unknown_mfr())
 
     root.protocol("WM_DELETE_WINDOW", cancel)
     root.transient()
@@ -1529,8 +1396,7 @@ def batch_update_dialog():
     # Text area
     text_area = scrolledtext.ScrolledText(root, font=("Arial", 10), width=50, height=15)
     text_area.pack(pady=10, padx=20)
-    add_entry_context_menu(text_area)
-    
+
     result = {'aci_list': None}
 
     def on_submit():
@@ -1644,18 +1510,22 @@ def batch_update_worker(file_path, aci_list):
                 logger.error(f"  Error loading ACI {aci}")
                 continue
 
-            # Skip any ACI numbers that contain a hyphen
-            if '-' in aci:
-                results['skipped'].append((aci, "ACI contains hyphen - manual update required"))
-                logger.info(f"  Skipped {aci} - hyphenated ACI")
-                continue
-
             # Check if vendor is auto-supported
             vendor_name = current_data[6]
             if not is_vendor_auto(vendor_name):
                 results['skipped'].append((aci, f"Manual vendor: {vendor_name}"))
                 logger.info(f"  Skipped {aci} - manual vendor")
                 continue
+
+            # For hyphenated ACI numbers, only skip for McMaster vendors
+            try:
+                vendor_key = str(vendor_name).strip().lower() if vendor_name else ""
+                if '-' in str(aci) and vendor_key in ['mcmaster', 'mcmaster-carr']:
+                    results['skipped'].append((aci, "Hyphenated ACI - McMaster requires manual update"))
+                    logger.info(f"  Skipped {aci} - hyphenated ACI for McMaster")
+                    continue
+            except Exception as e:
+                logger.warning(f"  Warning while evaluating hyphen rule for {aci}: {e}")
 
             # Scrape data
             part_number = current_data[7]
@@ -1926,7 +1796,7 @@ def main_loop(file_path):
                         logger.info(f"Manual vendor for new entry: {vendor}")
 
                     # Show user form
-                    user_form(current_data, entry_data, FIELDS, file_path, row_index, tab_id, is_new_entry=True)
+                    user_form(current_data, entry_data, FIELDS, file_path, row_index, tab_id)
                 else:
                     logger.info("User declined to add new ACI")
                 continue
