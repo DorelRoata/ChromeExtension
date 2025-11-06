@@ -158,3 +158,29 @@ Original file backed up as `main.py.backup` before changes.
 - Added defensive hidden imports (`et_xmlfile`, `jdcal`) and `--collect-all=openpyxl` for reliability.
 
 **Files Modified**: `build.py`
+
+### 9. Extension: Move Localhost Calls to Background
+**Problem**: Content script network calls to localhost triggered Chrome local network prompts and were unreliable.
+
+**Solution**:
+- Proxy all server calls via the background service worker.
+- Use 127.0.0.1 consistently; add PNA header server-side.
+- Tightened success reporting: popup only shows success when the server accepts payload.
+
+**Files Modified**: `extension/background.js`, `extension/content.js`, `extension/popup.js`, `extension/manifest.json`, `main.py`
+
+### 10. Extension Reliability Follow‑up (Timeout Unchanged)
+**Problem**: Popup showed success even when server didn’t receive data; server timed out waiting for data.
+
+**Solution**:
+- Gate “success” on actual server 2xx response from background fetch.
+- Bind Flask to `127.0.0.1` and align all extension URLs to `127.0.0.1` (manifest allows both 127.0.0.1 and localhost).
+- Keep wait timeout at 15s; do not increase.
+- Add lightweight background warnings on failed network calls.
+
+**Key References**:
+- `main.py`:148 (PNA header), `main.py`:229 (port check to 127.0.0.1), `main.py`:249 (Flask bind to 127.0.0.1), `main.py`:345/1355/1566 (15s waits)
+- `extension/background.js`:2 (SERVER_URL), 41–115 (register/scrape/poll with result checks)
+- `extension/content.js`: send via background and only report success on 2xx
+- `extension/popup.js`:1 (SERVER_URL)
+- `extension/manifest.json`: host_permissions include 127.0.0.1 and localhost

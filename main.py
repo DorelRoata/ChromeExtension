@@ -142,6 +142,14 @@ def create_flask_app():
     app = Flask(__name__)
     CORS(app)
     
+    @app.after_request
+    def add_private_network_header(response):
+        try:
+            response.headers['Access-Control-Allow-Private-Network'] = 'true'
+        except Exception:
+            pass
+        return response
+    
     @app.route('/ping', methods=['GET'])
     def ping():
         return jsonify({"status": "ok", "timestamp": time.time()})
@@ -218,7 +226,7 @@ def start_flask_server():
     # Check if port is already in use
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    result = sock.connect_ex(('localhost', SERVER_PORT))
+    result = sock.connect_ex(('127.0.0.1', SERVER_PORT))
     sock.close()
 
     if result == 0:
@@ -238,7 +246,7 @@ def start_flask_server():
     def run_server():
         logger.info(f"Starting Flask server on port {SERVER_PORT}...")
         try:
-            FLASK_APP.run(host='localhost', port=SERVER_PORT, debug=False, use_reloader=False, threaded=True)
+            FLASK_APP.run(host='127.0.0.1', port=SERVER_PORT, debug=False, use_reloader=False, threaded=True)
         except OSError as e:
             logger.error(f"Failed to start server: {e}")
 
@@ -334,7 +342,7 @@ class BrowserController:
             return False
     
     @staticmethod
-    def wait_for_scraped_data(timeout=30):
+    def wait_for_scraped_data(timeout=15):
         """Wait for extension to send scraped data"""
         logger.info(f"Waiting up to {timeout}s for scraped data...")
         start_time = time.time()
