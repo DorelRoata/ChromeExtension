@@ -866,7 +866,11 @@ def get_new_aci_details(aci_number):
     # Vendor dropdown
     tk.Label(root, text="Vendor:", font=("Arial", 10)).pack(pady=(10, 2), padx=20)
     vendor_var = tk.StringVar(root)
-    vendor_options = ['Grainger', 'McMaster-Carr', 'Festo', 'Zoro', 'Other']
+    vendor_options = [
+        'Grainger', 'McMaster-Carr', 'Festo', 'Zoro',
+        'ABB Baldor', 'Allen Bradley', 'Habasit', 'Etcetera',
+        'Other'
+    ]
     vendor_var.set('Other')
     vendor_menu = tk.OptionMenu(root, vendor_var, *vendor_options)
     vendor_menu.config(font=("Arial", 10), width=20)
@@ -1176,14 +1180,21 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
                     else:
                         entry_data[i] = text_boxes[i].get()
 
-            # Calculate price change and update date
+            # Calculate price change and update date (allow back-dating)
             percent_change = 0
             if current_data[9] not in ['Legacy', 'None', None] and entry_data[9] not in ['Legacy', 'None', None]:
                 try:
                     percent_change = calculate_percentage_change(current_data[9], entry_data[9])
 
                     # Update entry_data with calculated values
-                    entry_data[10] = datetime.now()  # Date
+                    # Preserve user-entered date if provided/valid; otherwise default to today
+                    try:
+                        user_date_raw = text_boxes[10].get() if len(text_boxes) > 10 else entry_data[10]
+                    except Exception:
+                        user_date_raw = entry_data[10]
+
+                    parsed_date = prepare_date_for_excel(user_date_raw)
+                    entry_data[10] = parsed_date if parsed_date is not None else datetime.now()
                     entry_data[11] = percent_change  # Change %
 
                     if percent_change and abs(percent_change) >= 1:
@@ -1191,8 +1202,13 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
                 except ValueError as e:
                     logger.error(f"Price conversion error: {e}")
             else:
-                # Even if we can't calculate percentage change, update the date
-                entry_data[10] = datetime.now()
+                # Even if we can't calculate percentage change, keep user-entered date if valid
+                try:
+                    user_date_raw = text_boxes[10].get() if len(text_boxes) > 10 else entry_data[10]
+                except Exception:
+                    user_date_raw = entry_data[10]
+                parsed_date = prepare_date_for_excel(user_date_raw)
+                entry_data[10] = parsed_date if parsed_date is not None else datetime.now()
 
             # Alert on significant price changes
             if percent_change and abs(percent_change) >= 20:

@@ -108,3 +108,53 @@ All tests pass successfully.
 ## Backup
 
 Original file backed up as `main.py.backup` before changes.
+
+---
+
+## Recent Changes (2025-11-06)
+
+### 4. Batch Update: Vendor-specific Hyphen Rule
+**Problem**: Batch update skipped any ACI containing a hyphen, even for vendors that don’t require it.
+
+**Solution**:
+- Only skip hyphenated ACI numbers when the vendor is McMaster or McMaster‑Carr.
+- All other vendors process hyphenated ACIs normally.
+
+**Files Modified**: `main.py`
+- Adjusted logic in `batch_update_worker()` to check `vendor_name` before skipping.
+
+### 5. Excel: Preserve Numeric Type for ACI (VLOOKUP)
+**Problem**: ACI numbers were sometimes written as text, breaking Excel VLOOKUP against numeric keys.
+
+**Solution**:
+- Added `prepare_aci_for_excel()` to coerce digit‑only ACI values to integers while preserving mixed/alpha IDs.
+- Ensured column 1 (ACI #) is written as numeric when possible in both updates and inserts.
+
+**Files Modified**: `main.py`
+- `prepare_aci_for_excel()` added.
+- `save_to_excel()` writes ACI as numeric when digit‑only.
+- `add_new_row_to_excel()` writes new ACI as numeric when digit‑only.
+
+### 6. Add Vendors to New ACI Dropdown
+**Change**: Added non‑auto vendors to the vendor selection list when adding a new ACI:
+- ABB Baldor, Allen Bradley, Habasit, Etcetera
+
+**Files Modified**: `main.py`
+- Updated `get_new_aci_details()` vendor options list.
+
+### 7. Allow Back‑Dated Entry Dates
+**Problem**: The Date field was always overwritten with today’s date on submit.
+
+**Solution**:
+- Preserve the user‑entered date if valid (parsed via `prepare_date_for_excel()`); otherwise, default to today.
+
+**Files Modified**: `main.py`
+- Updated submit logic in `user_form()` to keep user date.
+
+### 8. Build Script Improvements
+**Enhancements**:
+- OS‑aware `--add-data` separator handling.
+- Added `--clean` and argument logging.
+- Added defensive hidden imports (`et_xmlfile`, `jdcal`) and `--collect-all=openpyxl` for reliability.
+
+**Files Modified**: `build.py`
