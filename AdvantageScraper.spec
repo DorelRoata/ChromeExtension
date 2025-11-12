@@ -3,10 +3,12 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('icon.png', '.'), ('icon.ico', '.')]
 binaries = []
-hiddenimports = ['flask', 'flask_cors', 'openpyxl', 'tkinter', 'tkinter.font', 'socket', 'webbrowser', 'threading', 'queue']
+hiddenimports = ['flask', 'flask_cors', 'openpyxl', 'tkinter', 'tkinter.font', 'socket', 'webbrowser', 'threading', 'queue', 'et_xmlfile', 'jdcal']
 tmp_ret = collect_all('flask')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('flask_cors')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('openpyxl')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
@@ -45,4 +47,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['icon.ico'],
+    version='version_info.txt',
 )

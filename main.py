@@ -20,6 +20,9 @@ from flask_cors import CORS
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Application version (keep in sync with build.py and extension manifest)
+APP_VERSION = "2.1.0"
+
 # Memory Management
 def set_window_icon_safe(window, icon_ico_path=None, icon_png_path=None):
     """Set window icon with proper cleanup to prevent memory leaks"""
@@ -976,7 +979,11 @@ def get_search_string():
 
     # Status label
     status_label = tk.Label(root, text="Server Status: Running ✓", font=("Arial", 9), fg="green")
-    status_label.pack(pady=(12, 8), padx=20)
+    status_label.pack(pady=(12, 2), padx=20)
+
+    # Version label
+    version_label = tk.Label(root, text=f"Version: {APP_VERSION}", font=("Arial", 9), fg="gray")
+    version_label.pack(pady=(0, 8), padx=20)
 
     # Instruction label
     instruction_label = tk.Label(root, text="Enter ACI Number:", font=("Arial", 10))
@@ -1864,6 +1871,7 @@ def main():
         description='Multi-Vendor Price Scraper - Auto-update pricing data from multiple suppliers',
         epilog='If no arguments provided, runs in interactive GUI mode'
     )
+    parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {APP_VERSION}')
     parser.add_argument(
         '--batch',
         type=str,

@@ -2,6 +2,13 @@
 
 Chrome extension for scraping pricing data from multiple vendor websites.
 
+## What's New
+
+- Background script proxies all network calls to the local app at `http://127.0.0.1:5000` for reliability.
+- Popup indicates server status clearly: Connected (Optional) vs. Standalone Mode.
+- Success only reported when the background receives a 2xx response from the app.
+- Host permissions include both `127.0.0.1` and `localhost`.
+
 ## Supported Vendors
 - Grainger
 - McMaster-Carr
@@ -25,4 +32,4 @@ Chrome extension for scraping pricing data from multiple vendor websites.
 5. Select the extension folder
 
 ## Version
-2.0
+2.1.0

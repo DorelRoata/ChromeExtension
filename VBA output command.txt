@@ -3,7 +3,7 @@ Sub BatchUpdatePrices()
     ' Batch Update Prices from Selected ACIs
     ' ========================================
     ' This macro collects selected ACI numbers from Column A
-    ' and sends them to PriceScraper.exe for batch updating
+    ' and sends them to AdvantageScraper.exe for batch updating
 
     Dim aciList As String
     Dim exePath As String
@@ -64,19 +64,19 @@ Sub BatchUpdatePrices()
     Next
     aciList = Join(aciArray, ",")
 
-    ' Set the path to PriceScraper.exe
+    ' Set the path to AdvantageScraper.exe
     ' OPTION 1: Hardcoded path (update this to your installation path)
     exePath = "C:\ACI_MML_AUTO\AdvantageScraper.exe"
 
     ' OPTION 2: Use path from same directory as this Excel file
-    ' exePath = ThisWorkbook.Path & "\PriceScraper.exe"
+    ' exePath = ThisWorkbook.Path & "\AdvantageScraper.exe"
 
     ' OPTION 3: Use network path
-    ' exePath = "Z:\Path\To\PriceScraper.exe"
+    ' exePath = "Z:\Path\To\AdvantageScraper.exe"
 
     ' Verify the executable exists
     If Dir(exePath) = "" Then
-        MsgBox "PriceScraper.exe not found at:" & vbCrLf & vbCrLf & _
+        MsgBox "AdvantageScraper.exe not found at:" & vbCrLf & vbCrLf & _
                exePath & vbCrLf & vbCrLf & _
                "Please update the exePath in the VBA code.", _
                vbCritical, "File Not Found"
@@ -113,13 +113,13 @@ Sub BatchUpdatePrices()
 
     ' Success message
     MsgBox "Batch update initiated for " & aciCount & " ACI number(s)." & vbCrLf & vbCrLf & _
-           "The PriceScraper application will open and process each item automatically.", _
+           "The AdvantageScraper application will open and process each item automatically.", _
            vbInformation, "Batch Update Started"
 
     Exit Sub
 
 ErrorHandler:
-    MsgBox "Error launching PriceScraper:" & vbCrLf & vbCrLf & _
+    MsgBox "Error launching AdvantageScraper:" & vbCrLf & vbCrLf & _
            Err.Description & vbCrLf & vbCrLf & _
            "Command: " & cmd, _
            vbCritical, "Launch Error"

@@ -2,18 +2,18 @@
 
 ## Implemented Changes
 
-### 1. Memory Leak Fix (Issue #8)
-**Problem**: Global `_APP_ICON_PHOTO` variable accumulated PhotoImage objects causing memory leaks.
+### 1. Memory Icon Handling (Issue #8)
+**Problem**: Repeated creation of `PhotoImage` objects can leak memory if not referenced.
 
-**Solution**: 
-- Removed global `_APP_ICON_PHOTO` variable
-- Created `set_window_icon_safe()` function that stores icon reference on window object
-- Updated all 5 GUI functions to use new approach
+**Current State**:
+- Added helper `set_window_icon_safe()` to attach icon refs to window objects and avoid globals.
+- The code currently still uses a cached global `_APP_ICON_PHOTO` to prevent GC, which mitigates leaks by reusing a single image.
 
-**Files Modified**: `main.py`
-- Added new function after imports
-- Removed global variable (line 856)
-- Updated: `get_new_aci_details()`, `get_search_string()`, `user_form()`, `batch_update_dialog()`, `show_batch_summary()`
+**Next Step**:
+- Adopt `set_window_icon_safe()` in all GUI windows to remove the remaining global usage.
+
+**Files**: `main.py`
+- Helper present near top of file.
 
 ### 2. Error Handling Improvement (Issue #12)
 **Problem**: Inconsistent error messages and handling patterns throughout codebase.
@@ -184,3 +184,62 @@ Original file backed up as `main.py.backup` before changes.
 - `extension/content.js`: send via background and only report success on 2xx
 - `extension/popup.js`:1 (SERVER_URL)
 - `extension/manifest.json`: host_permissions include 127.0.0.1 and localhost
+
+---
+
+## Recent Changes (2025-11-12)
+
+### 11. Browser: Robust Chrome Detection (Windows/macOS/Linux)
+**Problem**: Opening vendor pages failed on some systems when Chrome wasn’t on PATH.
+
+**Solution**:
+- Added `BrowserController.find_chrome_path()` with Windows Registry lookup and common fallbacks; supports macOS/Linux paths.
+- `open_vendor_page()` uses detected Chrome when available; falls back to default browser.
+
+**Files**: `main.py:262` (find_chrome_path), `main.py:317` (open_vendor_page)
+
+### 12. Excel Typing + Formatting Consistency
+**Problem**: Some fields were saved as strings, causing VLOOKUP/format issues (dates/prices/ACI).
+
+**Solution**:
+- `prepare_aci_for_excel()` stores digit-only ACIs as integers.
+- `prepare_date_for_excel()` writes true date objects (no time); display formatting controlled by column formats.
+- `format_price_value()` ensures numeric prices; `clean_value_for_excel()` converts placeholders like "Not Found" to blanks.
+- `save_to_excel()` applies type-aware conversions and column number formats.
+- `add_new_row_to_excel()` writes Date as `datetime.now()` (typed), preserving formats by copying the last row.
+
+**Files**: `main.py:422` (prepare_date_for_excel), `main.py:461` (prepare_aci_for_excel), `main.py:734` (save_to_excel), `main.py:777` (add_new_row_to_excel)
+
+### 13. Vendor Data Normalization
+**Problem**: Units/quantities/prices differed per site and required cleanup.
+
+**Solution**:
+- Centralized parsing via `parse_vendor_data()` plus per-vendor cleaners:
+  - Grainger: split unit "each/pack of N", clean MFR.
+  - McMaster: parse "$X per pack of N" and "each" variants.
+  - Festo: type price; infer qty.
+  - Zoro: parse "$X / pk N", "$X / ea", "$X / pr"; set unit and qty.
+
+**Files**: `main.py:522` (cleanup_grainger_data), `main.py:545` (cleanup_mcmaster_data), `main.py:594` (cleanup_festo_data), `main.py:607` (cleanup_zoro_data)
+
+### 14. Batch Matching Refinements
+**Change**:
+- Part-number match is skipped for McMaster/McMaster‑Carr (their product/MFR patterns differ).
+- Unit match check is tolerant of unavailable values ("Not Found").
+- Hyphenated ACI skip remains vendor-specific to McMaster only (see 2025‑11‑06 #4).
+
+**Files**: `main.py:1482` (validate_batch_match), `main.py:1524` (batch rules)
+
+### 15. Extension UX: Optional Server / Standalone Messaging
+**Change**:
+- Popup shows "Server: Connected ✓ (Optional)" and "Not Connected (Standalone Mode)" to reflect background-proxy behavior.
+- Success now reflects background 2xx acceptance; content script shows a toast only when payload accepted.
+
+**Files**: `extension/popup.js`, `extension/content.js`, `extension/background.js`
+
+### 16. Misc
+- Flask binds to `127.0.0.1` explicitly; PNA header added in `after_request` hook.
+- Removed stale `main.py.backup` file to avoid drift.
+- Minor CRLF normalization across several files.
+
+**Files**: `main.py:145` (after_request header), `main.py:249` (Flask bind), repo cleanup

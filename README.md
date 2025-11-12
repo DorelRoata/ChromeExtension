@@ -2,6 +2,16 @@
 
 A powerful tool that combines a Python Flask backend with a Chrome extension to automatically scrape and update pricing data from multiple industrial suppliers.
 
+## What's New
+
+- Robust Chrome detection across Windows/macOS/Linux; falls back gracefully if Chrome isn’t found.
+- Excel typing fixes: ACI saved as numeric when digits-only, dates stored as real dates, prices parsed to numbers, and consistent number formats applied.
+- Vendor parsing cleanup for Grainger, McMaster‑Carr, Festo, and Zoro to normalize unit/qty/price.
+- Batch update refinements: vendor-aware part matching (skip strict match for McMaster), tolerant unit checks, and hyphen rule limited to McMaster only.
+- Extension reliability: background proxies all requests to `127.0.0.1`; “success” only when the app accepts the payload; popup clarifies server is optional.
+- Stability: explicit bind to `127.0.0.1`, private‑network CORS header, and minor cleanup.
+- Executable naming unified: app binary is `AdvantageScraper.exe` (formerly `PriceScraper.exe`).
+
 ## New Features
 
 ### Add New ACI Numbers
@@ -29,7 +39,7 @@ Process multiple ACI numbers at once:
 6. Pin the extension to your toolbar
 
 ### 2. Run the Application
-- Double-click `PriceScraper.exe`
+- Double-click `AdvantageScraper.exe`
 - The Flask server will start automatically
 - Extension popup should show "Server: Connected ✓"
 
@@ -53,13 +63,14 @@ For automation via Excel macros or scripts:
 
 ```bash
 # Comma-separated list
-PriceScraper.exe --batch "ACI001,ACI002,ACI003"
+AdvantageScraper.exe --batch "ACI001,ACI002,ACI003"
 
 # From file (one ACI per line)
-PriceScraper.exe --batch-file "aci_list.txt"
+AdvantageScraper.exe --batch-file "aci_list.txt"
 
-# Show help
-PriceScraper.exe --help
+# Show version / help
+AdvantageScraper.exe --version
+AdvantageScraper.exe --help
 ```
 
 **Excel VBA Macro Example:**
@@ -72,7 +83,7 @@ Sub BatchUpdatePrices()
     aciList = Join(Application.Transpose(Selection), ",")
 
     ' Run batch update
-    exePath = "C:\Path\To\PriceScraper.exe"
+    exePath = "C:\Path\To\AdvantageScraper.exe"
     Shell exePath & " --batch """ & aciList & """"
 End Sub
 ```
@@ -86,7 +97,7 @@ End Sub
 ## Troubleshooting
 
 **Extension shows "Server: Not Running"**
-- Make sure PriceScraper.exe is running
+- Make sure AdvantageScraper.exe is running
 - Check Windows Firewall isn't blocking port 5000
 
 **No data received after 30 seconds**

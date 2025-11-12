@@ -1,0 +1,17 @@
+GraingerWebsiteSample/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+build/
+dist/
+*.zip
+*.pkg
+*.pyz
+*.toc
+*.spec~
+
+# Local files not to commit
+Setup.docx

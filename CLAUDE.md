@@ -170,7 +170,7 @@ python main.py --batch "ACI001,ACI002,ACI003"
 python main.py --batch-file "aci_list.txt"
 
 # From Excel VBA macro
-Shell "PriceScraper.exe --batch ""ACI001,ACI002,ACI003"""
+Shell "AdvantageScraper.exe --batch ""ACI001,ACI002,ACI003"""
 ```
 
 **Validation Rules (validate_batch_match):**
@@ -204,12 +204,12 @@ Shell "PriceScraper.exe --batch ""ACI001,ACI002,ACI003"""
 python build.py
 ```
 
-This creates `dist/PriceScraper.exe` using PyInstaller with:
+This creates `dist/AdvantageScraper.exe` using PyInstaller with:
 - Icon bundling (`icon.ico`, `icon.png`)
 - Windowed mode (no console)
 - Hidden imports for Flask, openpyxl, tkinter
 
-**Spec files:** `AdvantageScraper.spec` and `PriceScraper.spec` contain PyInstaller configurations.
+**Spec file:** `AdvantageScraper.spec` contains the PyInstaller configuration. Alternatively, use `build.py` to generate `dist/AdvantageScraper.exe`.
 
 ### Installing Chrome Extension
 
@@ -253,7 +253,7 @@ Sub BatchUpdatePrices()
     aciList = Join(Application.Transpose(Selection), ",")
 
     ' Path to compiled executable
-    exePath = "C:\Path\To\PriceScraper.exe"
+    exePath = "C:\Path\To\AdvantageScraper.exe"
 
     ' Run batch update
     Shell exePath & " --batch """ & aciList & """"

@@ -1,4 +1,12 @@
 const SERVER_URL = 'http://127.0.0.1:5000';
+// Display extension version in popup
+try {
+  const manifest = chrome.runtime.getManifest();
+  const verEl = document.getElementById('extVersion');
+  if (manifest && verEl) verEl.textContent = manifest.version || '';
+} catch (_) {
+  // ignore
+}
 let serverConnected = false;
 
 async function checkServerStatus() {

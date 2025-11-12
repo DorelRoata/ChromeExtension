@@ -1,6 +1,7 @@
 {
   "name": "Advantage Multi-Vendor Scraper",
-  "version": "2.0",
+  "version": "2.1.0",
+  "version_name": "2.1.0",
   "manifest_version": 3,
   "description": "Scrapes pricing data from Grainger, McMaster-Carr, Festo, and Zoro",
   "homepage_url": "https://github.com/DorelRoata/ChromeExtension",
