@@ -9,7 +9,9 @@
     "https://www.grainger.com/*",
     "https://www.mcmaster.com/*",
     "https://www.festo.com/*",
-    "https://www.zoro.com/*"
+    "https://www.zoro.com/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ],
   "content_scripts": [
     {
