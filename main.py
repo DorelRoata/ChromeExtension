@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Application version (keep in sync with build.py and extension manifest)
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.1.1"
 
 # Memory Management
 def set_window_icon_safe(window, icon_ico_path=None, icon_png_path=None):
@@ -1064,6 +1064,17 @@ def switch_checkbox_state(index, checkboxes, text_boxes, current_text_boxes, fie
     # Get the state AFTER the checkbox has been toggled (it's already changed by the time this is called)
     state = checkbox.var.get()
 
+    # Special handling: Do not overwrite Date field text when toggling KEEP.
+    # We always respect whatever is typed into the Date entry (today's default or backdated).
+    if fields[index] == "Date":
+        try:
+            current_val = current_data[index]
+        except Exception:
+            current_val = ""
+        # Maintain highlight based on difference from current file value
+        compare_and_highlight(text_boxes[index], current_val, text_boxes[index].get())
+        return
+
     if state:  # Checked - use current data
         if fields[index] == "Description":
             text_boxes[index].delete("1.0", tk.END)
@@ -1151,6 +1162,13 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
             text_box = tk.Entry(root, font=large_font, width=40)
             text_box.grid(row=i + 1, column=1, padx=5, pady=5)
             entry_text = "" if is_not_found or entry_data[i] is None else str(entry_data[i])
+
+            # Always prefill Date with today's date on the form to encourage updating
+            # while still allowing manual backdating. Keep entry_data aligned with the visible value.
+            if field == "Date":
+                entry_text = datetime.now().strftime("%m/%d/%Y")
+                entry_data[i] = entry_text
+
             text_box.insert(0, entry_text)
 
             current_text_box = tk.Entry(root, font=large_font, state='normal', width=40, takefocus=0)
@@ -1269,15 +1287,22 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
     def toggle_all_checkboxes():
         check_all_state['checked'] = not check_all_state['checked']
         for checkbox in checkboxes:
-            checkbox.var.set(check_all_state['checked'])
-            # Trigger the visual update by updating the display
+            # Determine field index first
             idx = checkboxes.index(checkbox)
+            # Do not toggle the KEEP checkbox for Date; it remains independently controlled
+            if fields[idx] != "Date":
+                checkbox.var.set(check_all_state['checked'])
+            # Trigger the visual update by updating the display
             if check_all_state['checked']:
                 # Use current data
                 if fields[idx] == "Description":
                     text_boxes[idx].delete("1.0", tk.END)
                     text_boxes[idx].insert(tk.END, current_data[idx] if current_data[idx] is not None else "")
                     text_boxes[idx].config(bg="white")
+                elif fields[idx] == "Date":
+                    # Keep the current Date entry (today's default or user input)
+                    # Do not overwrite with current file value
+                    compare_and_highlight(text_boxes[idx], current_data[idx], text_boxes[idx].get())
                 else:
                     text_boxes[idx].delete(0, tk.END)
                     text_boxes[idx].insert(0, str(current_data[idx]) if current_data[idx] is not None else "")
@@ -1288,6 +1313,9 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
                     text_boxes[idx].delete("1.0", tk.END)
                     text_boxes[idx].insert(tk.END, entry_data[idx] if entry_data[idx] is not None else "")
                     compare_and_highlight(text_boxes[idx], current_data[idx], entry_data[idx])
+                elif fields[idx] == "Date":
+                    # Keep current Date entry (which we set to today's date initially)
+                    compare_and_highlight(text_boxes[idx], current_data[idx], text_boxes[idx].get())
                 else:
                     text_boxes[idx].delete(0, tk.END)
                     text_boxes[idx].insert(0, str(entry_data[idx]) if entry_data[idx] is not None else "")

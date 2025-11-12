@@ -11,6 +11,7 @@ A powerful tool that combines a Python Flask backend with a Chrome extension to 
 - Extension reliability: background proxies all requests to `127.0.0.1`; “success” only when the app accepts the payload; popup clarifies server is optional.
 - Stability: explicit bind to `127.0.0.1`, private‑network CORS header, and minor cleanup.
 - Executable naming unified: app binary is `AdvantageScraper.exe` (formerly `PriceScraper.exe`).
+ - Manual Date entry UX: Date field now defaults to today in the update form (manual vendors included), remains editable for backdating, and KEEP/"Check All" no longer overwrite the Date field.
 
 ## New Features
 

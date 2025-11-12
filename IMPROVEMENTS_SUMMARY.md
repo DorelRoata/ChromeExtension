@@ -111,6 +111,22 @@ Original file backed up as `main.py.backup` before changes.
 
 ---
 
+## Recent Changes (2025-11-12)
+
+### 7. Manual Date Entry Defaults and Protection
+**Problem**: When enabling backdating, the Date field no longer defaulted to today's date. Additionally, toggling KEEP/"Check All" could overwrite a user-entered date with the file's existing date.
+
+**Solution**:
+- The Date field in the user form now pre-fills with today's date for manual updates while remaining fully editable (backdating supported).
+- KEEP toggles and the "Check All" action no longer overwrite the Date entry. Whatever the user types (including today's default) is preserved unless explicitly edited.
+- On submit, the app reads the Date directly from the entry field and falls back to today's date only if blank/invalid.
+
+**Files Modified**: `main.py`
+- `user_form()`: Prefill Date with `datetime.now()` and prevent KEEP/"Check All" from overwriting it.
+- Submit logic: Always read Date from entry field; parse to a real Excel date if valid.
+
+---
+
 ## Recent Changes (2025-11-06)
 
 ### 4. Batch Update: Vendor-specific Hyphen Rule

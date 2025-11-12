@@ -4,7 +4,7 @@ import sys
 import shutil
 
 # Central app version (keep in sync with manifest and main.py)
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 
 def _write_version_file(path: str, version: str):
     """Generate a Windows version info file for PyInstaller."""
