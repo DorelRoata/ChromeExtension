@@ -152,8 +152,8 @@ Original file backed up as `main.py.backup` before changes.
 - `add_new_row_to_excel()` writes new ACI as numeric when digit‑only.
 
 ### 6. Add Vendors to New ACI Dropdown
-**Change**: Added non‑auto vendors to the vendor selection list when adding a new ACI:
-- ABB Baldor, Allen Bradley, Habasit, Etcetera
+**Change**: Added non-auto vendors to the vendor selection list when adding a new ACI:
+- ABB Baldor, Allen Bradley, Habasit
 
 **Files Modified**: `main.py`
 - Updated `get_new_aci_details()` vendor options list.

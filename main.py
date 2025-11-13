@@ -879,7 +879,7 @@ def get_new_aci_details(aci_number):
     vendor_var = tk.StringVar(root)
     vendor_options = [
         'Grainger', 'McMaster-Carr', 'Festo', 'Zoro',
-        'ABB Baldor', 'Allen Bradley', 'Habasit', 'Etcetera',
+        'ABB Baldor', 'Allen Bradley', 'Habasit',
         'Other'
     ]
     vendor_var.set('Other')
@@ -1346,8 +1346,7 @@ def user_form(current_data, entry_data, fields, file_path, row_index, tab_id=Non
     # Bind keyboard shortcuts
     root.bind('<Control-s>', lambda e: submit())
     root.bind('<Control-S>', lambda e: submit())
-    root.bind('<Control-x>', lambda e: cancel())
-    root.bind('<Control-X>', lambda e: cancel())
+    root.bind('<Escape>', lambda e: cancel())
 
     root.protocol("WM_DELETE_WINDOW", cancel)
     root.transient()
@@ -1828,8 +1827,14 @@ def main_loop(file_path):
                         logger.info("User cancelled adding new ACI")
                         continue
 
+                    vendor_value = ''
+                    if isinstance(vendor, str):
+                        vendor_value = '' if vendor.strip().lower() == 'other' else vendor
+                    else:
+                        vendor_value = vendor
+
                     # Add new row to Excel
-                    new_data, new_row_index = add_new_row_to_excel(file_path, search_string, vendor, part_number)
+                    new_data, new_row_index = add_new_row_to_excel(file_path, search_string, vendor_value, part_number)
 
                     if not new_data:
                         messagebox.showerror("Error", "Failed to add new ACI to Excel")

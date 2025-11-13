@@ -106,9 +106,9 @@ Displays 15 fields side-by-side:
 
 **Keyboard Shortcuts:**
 - `Ctrl+S`: Submit
-- `Ctrl+X`: Cancel
-- `Enter` (in search dialog): Submit
-- `Escape`: Cancel
+- `Esc`: Cancel (entry form)
+- `Enter` (search dialog): Submit
+- `Esc` (search dialog): Cancel
 
 ## New Features
 

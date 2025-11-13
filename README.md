@@ -53,6 +53,10 @@ Process multiple ACI numbers at once:
 4. **Review Data**: Confirm or modify the data in the GUI
 5. **Save**: Click Submit to update the Excel file
 
+**Keyboard Shortcuts**
+- `Ctrl+S`: Submit/save the data entry form
+- `Esc`: Cancel and close the data entry form (keeps the standard `Ctrl+X` cut shortcut available)
+
 ### Batch Update Mode (GUI)
 1. Click **"Batch Update"** button on the main dialog
 2. Paste or type ACI numbers (one per line or comma-separated)
